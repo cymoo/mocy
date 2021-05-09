@@ -5,8 +5,9 @@ import requests
 import time
 from functools import partial
 from queue import Queue
+# from threading import Lock
 from threading import Thread
-from typing import Optional, Callable, Generator, Any, Union, List, Tuple
+from typing import Optional, Callable, Generator, Any, Union, List
 from bs4 import BeautifulSoup
 
 
@@ -43,18 +44,16 @@ class Spider:
     def __init__(self):
         self.request_queue = Queue()
         self.response_queue = Queue()
-
-    def parse(self, res: 'Response') -> Generator:
-        yield res
-
-    def collect(self, result: Any) -> Any:
-        pass
+        self.all_requests = 0
+        self.all_downloaded = 0
+        # self._lock = Lock()
 
     def process_before_download(self, req: 'Request') -> Optional['Request']:
         rv = req
         for func in before_download_handlers:
             rv = func(self, rv)
             if not isinstance(rv, Request):
+                self.all_requests -= 1
                 return None
         return rv
 
@@ -78,8 +77,15 @@ class Spider:
         while True:
             req = self.request_queue.get()
             # TODO: handle exception
-            res = req.send()
-            self.response_queue.put(res)
+            try:
+                res = req.send()
+                self.response_queue.put(res)
+            except Exception as err:
+                # logger.error('cannot download from {}'.format(req.url), exc_info=err)
+                err.url = req.url
+                self.response_queue.put(err)
+            # finally:
+            #     with self._lock: self.all_downloaded += 1
 
     def init_fetchers(self):
         for idx in range(max(self.config['workers'], 1)):
@@ -94,17 +100,27 @@ class Spider:
         for req in entry:
             if not isinstance(req, Request):
                 req = Request(req)
-            self.request_queue.put(req)
+            self.add_request(req)
+
+    def add_request(self, req: 'Request') -> None:
+        self.all_requests += 1
+        self.request_queue.put(req)
 
     def start(self):
+        start = time.time()
+        logger.info('spider is running...')
         default_parser = getattr(self, 'parse', None)
         default_collector = getattr(self, 'collect', None)
 
         self.init_requests()
         self.init_fetchers()
 
-        while True:
+        while not self.completed:
             res = self.response_queue.get()
+            self.all_downloaded += 1
+            if isinstance(res, Exception):
+                logger.error('cannot download from {}'.format(res.url), exc_info=res)
+                continue
             # res.css = partial(Response.css, res)
             parser = res.callback if res.callback else default_parser
 
@@ -117,7 +133,7 @@ class Spider:
                     if session and item.session is False:
                         close_session = False
                         item.session = res.session
-                    self.request_queue.put(item)
+                    self.add_request(item)
                 else:
                     # TODO: handle exception when collecting
                     default_collector(item)
@@ -127,10 +143,17 @@ class Spider:
                     session.close()
                 except Exception as err:
                     logger.error('cannot close session', exc_info=err)
+        logger.info('spider exited; total running time: {:.1f}s'.format(time.time() - start))
 
     @property
     def completed(self) -> bool:
-        return False
+        return self.all_requests == self.all_downloaded
+
+    def parse(self, res: 'Response') -> Generator:
+        yield res
+
+    def collect(self, result: Any) -> Any:
+        pass
 
 
 class Request:
@@ -196,19 +219,26 @@ class Response(requests.models.Response):
 
 
 class FirstSpider(Spider):
-    entry = ['https://daydream.site/how-to-build-a-web-server/']
+    entry = [
+        # 'https://daydream.site/how-to-build-a-web-server/',
+        # 'https://bing.com',
+        # 'https://baidu.com',
+        # 'http://www.sjtup.com',
+        'https://foo.com',
+    ]
 
     def parse(self, res: Response) -> Generator:
-        yield Request('https://daydream.site/how-to-build-a-web-framework/', callback=self.parse_next)
-        yield res.url
-        yield 'yes, it works'
+        yield res.text
+        # yield Request('https://daydream.site/how-to-build-a-web-framework/', callback=self.parse_next)
+        # yield res.url
+        # yield 'yes, it works'
 
     def parse_next(self, res: Response) -> Generator:
-        yield res
-        yield 'done'
+        yield res.text
 
     def collect(self, result: Any) -> None:
         print(result)
+        print('*' * 30)
 
 
 my_spider = FirstSpider()
