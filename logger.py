@@ -63,3 +63,32 @@ def warn(msg: str, *args, **kw) -> None:
 
 def error(msg: str, *args, **kw) -> None:
     log(logging.ERROR, msg, *args, **kw)
+
+
+class Logger:
+    def __init__(self):
+        pass
+
+    def add_logger(self):
+        pass
+
+    def get_logger(self):
+        pass
+
+    def log(self):
+        pass
+
+    def debug(self):
+        pass
+
+    def info(self):
+        pass
+
+    def warn(self):
+        pass
+
+    def error(self):
+        pass
+
+    def critical(self):
+        pass

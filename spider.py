@@ -5,16 +5,45 @@ import requests
 import time
 from functools import partial
 from queue import Queue
-# from threading import Lock
+from threading import Lock
 from threading import Thread
 from typing import Optional, Callable, Generator, Any, Union, List
 from bs4 import BeautifulSoup
 
 
+class SpiderError(Exception):
+    def __init__(self, msg: str, cause: Optional[Exception] = None) -> None:
+        self.msg = msg
+        self.cause = cause
+        self.req = None
+        self.res = None
+
+
+class RequestIgnored(SpiderError):
+    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
+        super().__init__('Request was ignored: {}'.format(url), cause)
+
+
+class ResponseIgnored(SpiderError):
+    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
+        self.new_req = None
+        super().__init__('Response was ignored: {}'.format(url), cause)
+
+
+class DownLoadError(SpiderError):
+    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
+        self.retry_req = None
+        super().__init__('Cannot download from: {}'.format(url), cause)
+
+
+class ParseError(SpiderError):
+    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
+        super().__init__('Cannot parse response from: {}'.format(url), cause)
+
+
 before_download_handlers = []
 after_download_handlers = []
 pipes = []
-error_handlers = []
 
 
 def before_download(func):
@@ -44,31 +73,40 @@ class Spider:
     def __init__(self):
         self.request_queue = Queue()
         self.response_queue = Queue()
+
         self.all_requests = 0
-        self.all_downloaded = 0
-        # self._lock = Lock()
+        # self.ignored_requests = 0
+        self.all_responses = 0
+        # self.ignored_responses = 0
+        self.failed_urls = []
 
     def process_before_download(self, req: 'Request') -> Optional['Request']:
         rv = req
         for func in before_download_handlers:
             rv = func(self, rv)
             if not isinstance(rv, Request):
-                self.all_requests -= 1
-                return None
+                raise RequestIgnored(req.url)
         return rv
 
-    def process_after_download(self, res: 'Response') -> Optional['Response']:
+    def process_after_download(self, res: 'Response') -> Optional[Union['Response', 'Request']]:
         rv = res
         for func in after_download_handlers:
             rv = func(self, rv)
-            if not isinstance(rv, requests.Response):
-                return None
+            if not isinstance(rv, Response):
+                err = ResponseIgnored(res.url)
+                if isinstance(rv, Request): err.new_req = rv
+                raise err
         return rv
 
     def process_pipes(self, item: Any, res: 'Response') -> Any:
         rv = item
-        for func in pipes:
-            rv = func(self, rv, res)
+        for func in (pipes or self.__class__.collect):
+            arg_count = func.__code__.co_argcount
+            if arg_count == 3:
+                rv = func(self, rv, res)
+            else:
+                rv = func(self, rv)
+
             if rv is None:
                 return None
         return rv
@@ -76,16 +114,32 @@ class Spider:
     def download(self):
         while True:
             req = self.request_queue.get()
-            # TODO: handle exception
+
+            try:
+                req = self.process_before_download(req)
+            except Exception as err:
+                if not isinstance(err, RequestIgnored):
+                    err = RequestIgnored(req.url, err)
+                self.response_queue.put(err)
+                continue
+
             try:
                 res = req.send()
-                self.response_queue.put(res)
             except Exception as err:
-                # logger.error('cannot download from {}'.format(req.url), exc_info=err)
-                err.url = req.url
+                err = DownLoadError(req.url, err)
+                err.retry_req = req
                 self.response_queue.put(err)
-            # finally:
-            #     with self._lock: self.all_downloaded += 1
+                continue
+
+            try:
+                res = self.process_after_download(res)
+            except Exception as err:
+                if not isinstance(err, ResponseIgnored):
+                    err = ResponseIgnored(res.url, err)
+                self.response_queue.put(err)
+                continue
+
+            self.response_queue.put(res)
 
     def init_fetchers(self):
         for idx in range(max(self.config['workers'], 1)):
@@ -108,52 +162,97 @@ class Spider:
 
     def start(self):
         start = time.time()
-        logger.info('spider is running...')
-        default_parser = getattr(self, 'parse', None)
-        default_collector = getattr(self, 'collect', None)
+        logger.info('Spider is running...')
+        default_parser = getattr(self, 'parse')
 
         self.init_requests()
         self.init_fetchers()
 
         while not self.completed:
             res = self.response_queue.get()
-            self.all_downloaded += 1
-            if isinstance(res, Exception):
-                logger.error('cannot download from {}'.format(res.url), exc_info=res)
+            self.all_responses += 1
+
+            if not self.ensure_valid_response(res):
                 continue
-            # res.css = partial(Response.css, res)
+
+            # TODO: add the url to the bloom filter
+            res.select = partial(Response.select, res)
+
             parser = res.callback if res.callback else default_parser
 
             session = res.session
             close_session = True
 
-            # TODO: handle exception when parsing
-            for item in parser(res):
-                if isinstance(item, Request):
-                    if session and item.session is False:
-                        close_session = False
-                        item.session = res.session
-                    self.add_request(item)
-                else:
-                    # TODO: handle exception when collecting
-                    default_collector(item)
+            try:
+                for item in parser(res):
+                    if isinstance(item, Request):
+                        if session and item.session is False:
+                            close_session = False
+                            item.session = res.session
+                        self.add_request(item)
+                    else:
+                        self.process_pipes(item, res)
+            except Exception as err:
+                err = ParseError(res.url, err)
+                err.res = res
+                self.handle_error(err)
 
             if session and close_session:
                 try:
                     session.close()
                 except Exception as err:
-                    logger.error('cannot close session', exc_info=err)
-        logger.info('spider exited; total running time: {:.1f}s'.format(time.time() - start))
+                    err = SpiderError('Cannot close session', err)
+                    self.handle_error(err)
+
+        logger.info('Spider exited; running time: {:.1f}s.'.format(time.time() - start))
+        self.log_failed_urls()
+
+    def ensure_valid_response(self, res: Union[SpiderError, requests.Response]) -> bool:
+        if isinstance(res, requests.Response):
+            return True
+
+        if isinstance(res, RequestIgnored):
+            pass
+        elif isinstance(res, DownLoadError):
+            req = res.retry_req
+            if req.retry > 0:
+                req.retry -= 1
+                # TODO: a retry delay?
+                self.add_request(req)
+            else:
+                self.failed_urls.append(req.url)
+        elif isinstance(res, ResponseIgnored):
+            if res.new_req:
+                self.add_request(res.new_req)
+
+        try:
+            self.handle_error(res)
+        except Exception as err:
+            logger.error('Error in error handler!', exc_info=err)
+
+        return False
+
+    def log_failed_urls(self):
+        urls = self.failed_urls
+        if not urls: return
+
+        num = len(urls)
+        s = 's' if num > 1 else ''
+        msg = 'Cannot download from {} url{}:\n{}'.format(num, s, '\n'.join(urls))
+        logger.info(msg)
 
     @property
     def completed(self) -> bool:
-        return self.all_requests == self.all_downloaded
+        return self.all_requests == self.all_responses
 
     def parse(self, res: 'Response') -> Generator:
         yield res
 
-    def collect(self, result: Any) -> Any:
-        pass
+    def collect(self, item: Any, res: 'Response') -> Any:
+        logger.info(item)
+
+    def handle_error(self, reason: SpiderError) -> None:
+        logger.error(reason.msg, exc_info=reason.cause)
 
 
 class Request:
@@ -163,12 +262,14 @@ class Request:
                  callback: Optional[Callable] = None,
                  state: Optional[dict] = None,
                  session: Union[bool, dict, requests.Session] = False,
+                 retry: int = 0,
                  **kw):
         self.url = url
         self.method = method
         self.callback = callback
         self.state = state or {}
         self.session = session
+        self.retry = retry
         self.args = kw
 
     def make_session(self) -> Optional[requests.Session]:
@@ -190,7 +291,6 @@ class Request:
         sess = self.make_session()
         if sess: it = sess
 
-        # TODO: handle exception
         res = it.request(self.method, self.url, **self.args)
         res.req = self
         res.callback = self.callback
@@ -224,7 +324,9 @@ class FirstSpider(Spider):
         # 'https://bing.com',
         # 'https://baidu.com',
         # 'http://www.sjtup.com',
-        'https://foo.com',
+        # Request('https://foo.com', retry=1),
+        'https://bar.com',
+        # 'https://foobar.com',
     ]
 
     def parse(self, res: Response) -> Generator:
@@ -236,9 +338,18 @@ class FirstSpider(Spider):
     def parse_next(self, res: Response) -> Generator:
         yield res.text
 
-    def collect(self, result: Any) -> None:
+    def collect(self, result: Any, res: Response) -> None:
         print(result)
         print('*' * 30)
+
+    @pipe
+    def filter(self, result):
+        print('filter some results')
+        return result
+
+    @pipe
+    def save(self, result, res):
+        print('saving result to database')
 
 
 my_spider = FirstSpider()
