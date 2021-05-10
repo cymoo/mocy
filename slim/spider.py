@@ -3,43 +3,30 @@ import time
 from functools import partial
 from queue import Queue
 from threading import Thread
-from typing import Optional, Callable, Generator, Any, Union, List
+from typing import Optional, Generator, Any, Union
 
-import bs4
 import requests
-from bs4 import BeautifulSoup
 
-import logger
+from .logger import info, error
+from .exceptions import (
+    SpiderError,
+    DownLoadError,
+    ParseError,
+    RequestIgnored,
+    ResponseIgnored
+)
+from .request import Request
+from .response import Response
 
-
-class SpiderError(Exception):
-    def __init__(self, msg: str, cause: Optional[Exception] = None) -> None:
-        self.msg = msg
-        self.cause = cause
-        self.req = None
-        self.res = None
-
-
-class RequestIgnored(SpiderError):
-    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
-        super().__init__('Request was ignored: {}'.format(url), cause)
-
-
-class ResponseIgnored(SpiderError):
-    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
-        self.new_req = None
-        super().__init__('Response was ignored: {}'.format(url), cause)
-
-
-class DownLoadError(SpiderError):
-    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
-        self.retry_req = None
-        super().__init__('Cannot download from: {}'.format(url), cause)
-
-
-class ParseError(SpiderError):
-    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
-        super().__init__('Cannot parse response from: {}'.format(url), cause)
+__all__ = [
+    'Spider',
+    'before_download',
+    'after_download',
+    'pipe',
+    'before_download_handlers',
+    'after_download_handlers',
+    'pipes',
+]
 
 
 before_download_handlers = []
@@ -161,7 +148,7 @@ class Spider:
 
     def start(self):
         start = time.time()
-        logger.info('Spider is running...')
+        info('Spider is running...')
         default_parser = getattr(self, 'parse')
 
         self.init_requests()
@@ -203,7 +190,7 @@ class Spider:
                     err = SpiderError('Cannot close session', err)
                     self.handle_error(err)
 
-        logger.info('Spider exited; running time: {:.1f}s.'.format(time.time() - start))
+        info('Spider exited; running time: {:.1f}s.'.format(time.time() - start))
         self.log_failed_urls()
 
     def ensure_valid_response(self, res: Union[SpiderError, requests.Response]) -> bool:
@@ -227,7 +214,7 @@ class Spider:
         try:
             self.handle_error(res)
         except Exception as err:
-            logger.error('Error in error handler!', exc_info=err)
+            error('Error in error handler!', exc_info=err)
 
         return False
 
@@ -238,7 +225,7 @@ class Spider:
         num = len(urls)
         s = 's' if num > 1 else ''
         msg = 'Cannot download from {} url{}:\n{}'.format(num, s, '\n'.join(urls))
-        logger.info(msg)
+        info(msg)
 
     @property
     def completed(self) -> bool:
@@ -248,67 +235,7 @@ class Spider:
         yield res
 
     def collect(self, item: Any) -> Any:
-        logger.info(item)
+        info(item)
 
     def handle_error(self, reason: SpiderError) -> None:
-        logger.error(reason.msg, exc_info=reason.cause)
-
-
-class Request:
-    def __init__(self,
-                 url: str,
-                 method: str = 'GET',
-                 callback: Optional[Callable] = None,
-                 state: Optional[dict] = None,
-                 session: Union[bool, dict, requests.Session] = False,
-                 retry: int = 0,
-                 **kw):
-        self.url = url
-        self.method = method
-        self.callback = callback
-        self.state = state or {}
-        self.session = session
-        self.retry = retry
-        self.args = kw
-
-    def make_session(self) -> Optional[requests.Session]:
-        session = self.session
-        if session is True:
-            return requests.Session()
-        elif isinstance(session, requests.Session):
-            return session
-        elif isinstance(session, dict):
-            sess = requests.Session()
-            for key, value in session.items():
-                setattr(sess, key, value)
-            return sess
-        else:
-            return None
-
-    def send(self) -> 'Response':
-        it = requests
-        sess = self.make_session()
-        if sess: it = sess
-
-        res = it.request(self.method, self.url, **self.args)
-        res.req = self
-        res.callback = self.callback
-        res.state = self.state
-        res.session = sess
-        return res
-
-    def __repr__(self):
-        return '<Request [{}]>'.format(self.method)
-
-
-class Response(requests.Response):
-    def __init__(self):
-        super().__init__()
-        self.req: Optional[Request] = None
-        self.callback: Optional[Callable] = None
-        self.state: dict = {}
-        self.session: Optional[requests.Session] = None
-
-    def select(self, selector: str, **kw) -> List[bs4.element.Tag]:
-        soup = BeautifulSoup(self.text, 'html.parser')
-        return soup.select(selector, **kw)
+        error(reason.msg, exc_info=reason.cause)

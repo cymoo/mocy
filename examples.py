@@ -1,4 +1,4 @@
-from spider import Spider, Response, pipe, before_download, after_download
+from slim import Spider, pipe
 
 
 class ExampleSpider(Spider):
