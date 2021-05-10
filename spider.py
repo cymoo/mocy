@@ -1,14 +1,15 @@
-import bs4
-import logger
 import os
-import requests
 import time
 from functools import partial
 from queue import Queue
-from threading import Lock
 from threading import Thread
 from typing import Optional, Callable, Generator, Any, Union, List
+
+import bs4
+import requests
 from bs4 import BeautifulSoup
+
+import logger
 
 
 class SpiderError(Exception):
@@ -75,9 +76,7 @@ class Spider:
         self.response_queue = Queue()
 
         self.all_requests = 0
-        # self.ignored_requests = 0
         self.all_responses = 0
-        # self.ignored_responses = 0
         self.failed_urls = []
 
     def process_before_download(self, req: 'Request') -> Optional['Request']:
@@ -100,7 +99,7 @@ class Spider:
 
     def process_pipes(self, item: Any, res: 'Response') -> Any:
         rv = item
-        for func in (pipes or self.__class__.collect):
+        for func in (pipes or (self.__class__.collect,)):
             arg_count = func.__code__.co_argcount
             if arg_count == 3:
                 rv = func(self, rv, res)
@@ -175,7 +174,7 @@ class Spider:
             if not self.ensure_valid_response(res):
                 continue
 
-            # TODO: add the url to the bloom filter
+            # TODO: add the url to a bloom filter
             res.select = partial(Response.select, res)
 
             parser = res.callback if res.callback else default_parser
@@ -248,7 +247,7 @@ class Spider:
     def parse(self, res: 'Response') -> Generator:
         yield res
 
-    def collect(self, item: Any, res: 'Response') -> Any:
+    def collect(self, item: Any) -> Any:
         logger.info(item)
 
     def handle_error(self, reason: SpiderError) -> None:
@@ -302,7 +301,7 @@ class Request:
         return '<Request [{}]>'.format(self.method)
 
 
-class Response(requests.models.Response):
+class Response(requests.Response):
     def __init__(self):
         super().__init__()
         self.req: Optional[Request] = None
@@ -313,44 +312,3 @@ class Response(requests.models.Response):
     def select(self, selector: str, **kw) -> List[bs4.element.Tag]:
         soup = BeautifulSoup(self.text, 'html.parser')
         return soup.select(selector, **kw)
-
-    def css(self, selector: str, **kw):
-        pass
-
-
-class FirstSpider(Spider):
-    entry = [
-        # 'https://daydream.site/how-to-build-a-web-server/',
-        # 'https://bing.com',
-        # 'https://baidu.com',
-        # 'http://www.sjtup.com',
-        # Request('https://foo.com', retry=1),
-        'https://bar.com',
-        # 'https://foobar.com',
-    ]
-
-    def parse(self, res: Response) -> Generator:
-        yield res.text
-        # yield Request('https://daydream.site/how-to-build-a-web-framework/', callback=self.parse_next)
-        # yield res.url
-        # yield 'yes, it works'
-
-    def parse_next(self, res: Response) -> Generator:
-        yield res.text
-
-    def collect(self, result: Any, res: Response) -> None:
-        print(result)
-        print('*' * 30)
-
-    @pipe
-    def filter(self, result):
-        print('filter some results')
-        return result
-
-    @pipe
-    def save(self, result, res):
-        print('saving result to database')
-
-
-my_spider = FirstSpider()
-my_spider.start()
