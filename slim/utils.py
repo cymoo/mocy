@@ -1,9 +1,13 @@
 import logging
-from threading import Lock
+import time
+from queue import Queue, PriorityQueue
+from threading import Lock, Thread
 from typing import Optional
 
 
 __all__ = [
+    'DelayQueue',
+    'DummyLock',
     'set_logger',
     'get_logger',
     'debug',
@@ -11,6 +15,34 @@ __all__ = [
     'warn',
     'error'
 ]
+
+
+class DelayQueue(Queue):
+    def __init__(self):
+        super().__init__()
+        self.pq = PriorityQueue()
+        poller = Thread(target=self._poll, name='poller')
+        poller.daemon = True
+        poller.start()
+
+    def put_later(self, item, delay=0):
+        self.pq.put((time.time() + delay, item))
+
+    def _poll(self):
+        while True:
+            item = self.pq.get()
+            if item[0] <= time.time():
+                self.put(item[1])
+            else:
+                self.pq.put(item)
+
+
+class DummyLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 # logging utils

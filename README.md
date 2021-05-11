@@ -1,2 +1,2 @@
-# A very light-weight spider framework
+# A light-weight spider framework
 

@@ -4,6 +4,7 @@ import requests
 
 
 class Request:
+    # TODO: ...
     def __init__(self,
                  url: str,
                  method: str = 'GET',
@@ -11,6 +12,7 @@ class Request:
                  state: Optional[dict] = None,
                  session: Union[bool, dict, requests.Session] = False,
                  retry: int = 0,
+                 headers: Optional[dict] = None,
                  **kw):
         self.url = url
         self.method = method
@@ -18,9 +20,12 @@ class Request:
         self.state = state or {}
         self.session = session
         self.retry = retry
+
+        self.headers = headers or {}
+
         self.args = kw
 
-    def make_session(self) -> Optional[requests.Session]:
+    def _make_session(self) -> Optional[requests.Session]:
         session = self.session
         if session is True:
             return requests.Session()
@@ -34,9 +39,14 @@ class Request:
         else:
             return None
 
+    @property
+    def initial(self):
+        """Whether it is a unique request or the first request in a session."""
+        return not isinstance(self.session, requests.Session)
+
     def send(self) -> 'Response':
         it = requests
-        sess = self.make_session()
+        sess = self._make_session()
         if sess: it = sess
 
         res = it.request(self.method, self.url, **self.args)
