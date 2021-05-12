@@ -1,14 +1,14 @@
 import io
 from setuptools import setup
-import slim
+import mocy
 
 with io.open('README.md', 'rt') as f:
     readme = f.read()
 
 setup(
-    name='slim',
-    version=slim.__version__,
-    url='https://github.com/cymoo/slim',
+    name='mocy',
+    version=mocy.__version__,
+    url='https://github.com/cymoo/mocy',
     description='A light weight spider framework.',
     long_description=readme,
     long_description_content_type='text/markdown',
@@ -32,7 +32,7 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     keywords='scrapy crawler spider',
-    packages=['slim'],
+    packages=['mocy'],
     python_requires='>=3.6',
     install_requires=[
         'requests>=2.25.1',

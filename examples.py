@@ -1,16 +1,28 @@
-from slim import Spider, pipe
+from mocy import Spider, pipe, Request, logger
+from pprint import pprint
 
 
 class ExampleSpider(Spider):
-    entry = 'http://www.sjtup.com'
+    entry = Request(
+        'http://qr.sjtup.com/admin/login',
+        method='POST',
+        session=True,
+        data={
+            'nickname': 'sjtup',
+            'password': 'Sjtup313',
+        }
+    )
 
     def parse(self, res):
-        for item in res.select('.news-body h3'):
-            yield item.text
+        yield Request('http://qr.sjtup.com/admin/list', callback=self.parse_list)
 
-    @pipe
-    def output(self, result):
-        print(result)
+    def parse_list(self, res):
+        for item in res.select('td:first-child a'):
+            yield item.text, item['href']
+
+    # @pipe
+    # def output(self, result):
+    #     (result)
 
 
 spider = ExampleSpider()
