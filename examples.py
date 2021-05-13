@@ -3,7 +3,7 @@ from pprint import pprint
 
 
 class ExampleSpider(Spider):
-    entry = Request(
+    entry = [Request(
         'http://qr.sjtup.com/admin/login',
         method='POST',
         session=True,
@@ -11,7 +11,9 @@ class ExampleSpider(Spider):
             'nickname': 'xxx',
             'password': 'xxx',
         }
-    )
+    ),
+        'http://httpbin.org/status/404',
+    ]
 
     def parse(self, res):
         yield Request('http://qr.sjtup.com/admin/list', callback=self.parse_list)

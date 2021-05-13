@@ -5,4 +5,5 @@ __all__ = [
 
 
 def raise_http_error(spider, response):
+    response.raise_for_status()
     return response

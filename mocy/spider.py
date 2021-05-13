@@ -119,7 +119,7 @@ class Spider:
         default_parser = getattr(self, 'parse')
 
         self._init_requests()
-        self._init_fetchers()
+        self._init_downloaders()
 
         while not self._completed:
             res = self._response_queue.get()
@@ -171,7 +171,7 @@ class Spider:
         rv = res
         for func in self.after_download_handlers:
             rv = func(self, rv)
-            if not isinstance(rv, Response):
+            if not isinstance(rv, requests.Response):
                 err = ResponseIgnored(res.url)
                 if isinstance(rv, Request): err.new_req = rv
                 raise err
@@ -230,9 +230,9 @@ class Spider:
 
             self._response_queue.put(res)
 
-    def _init_fetchers(self):
+    def _init_downloaders(self):
         for idx in range(max(self.workers, 1)):
-            thread = Thread(target=self._download, name='fetcher-{}'.format(idx))
+            thread = Thread(target=self._download, name='downloader-{}'.format(idx))
             thread.daemon = True
             thread.start()
 
@@ -246,8 +246,8 @@ class Spider:
             self._add_request(req)
 
     def _add_request(self, req: 'Request', delay: Union[float, int] = 0) -> None:
-        req.retry = self.retry
-        req.timeout = self.timeout
+        req.retry = self.download_delay
+        req.timeout = self.download_timeout
         self._all_requests += 1
         if delay > 0:
             self._request_queue.put_later(req, delay)
