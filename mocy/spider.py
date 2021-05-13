@@ -2,8 +2,8 @@ import os
 import time
 from functools import partial
 from queue import Queue
-from threading import Thread
-from typing import Optional, Generator, Any, Union
+from threading import Thread, Lock
+from typing import Optional, Generator, Any, Union, Callable
 
 import requests
 
@@ -17,6 +17,11 @@ from .exceptions import (
 )
 from .request import Request
 from .response import Response
+from .middlewares import (
+    random_useragent,
+    download_stats,
+    raise_http_error
+)
 
 __all__ = [
     'Spider',
@@ -26,39 +31,64 @@ __all__ = [
 ]
 
 
+def _register_handlers(handler: Callable, name: str) -> Callable:
+    cls = get_enclosing_class(handler)
+    if name not in vars(cls):
+        handlers = getattr(Spider, name)
+        setattr(cls, name, handlers.copy())
+    handlers = getattr(cls, name)
+    handlers.append(handler)
+    return handler
+
+
 def before_download(func):
-    cls = get_enclosing_class(func)
-    handlers = getattr(cls, 'before_download_handlers')
-    handlers.append(func)
-    return func
+    return _register_handlers(func, 'before_download_handlers')
 
 
 def after_download(func):
-    cls = get_enclosing_class(func)
-    handlers = getattr(cls, 'after_download_handlers')
-    handlers.append(func)
-    return func
+    return _register_handlers(func, 'after_download_handlers')
 
 
 def pipe(func):
-    cls = get_enclosing_class(func)
-    handlers = getattr(cls, 'pipes')
-    handlers.append(func)
-    return func
+    return _register_handlers(func, 'pipes')
 
 
 class Spider:
-    workers = os.cpu_count() * 2 + 1
-    timeout = 3
-    delay = 0
-    retry = 0
+    # The maximum number of concurrent requests that will be performed by the downloader.
+    workers = os.cpu_count() * 2
+
+    # The amount of time (in secs) that the downloader will wait before timeout.
+    download_timeout = 30
+
+    # The maximum response size (in bytes) that downloader will download.
+    # If you want to disable it set to 0.
+    download_maxsize = 1024
+
+    # The amount of time (in secs) that the downloader should wait
+    # before downloading consecutive pages from the same website.
+    download_delay = 0
+
+    # If enabled, the spider will wait a random time (between 0.5 * delay and 1.5 * delay)
+    # while fetching requests from the same website.
+    random_download_delay = True
+
+    # Maximum number of times to retry.
+    retry_times = 3
+
+    retry_delay = 3
+
+    # HTTP response codes to retry.
+    # Other errors (DNS or connection issues, etc) are always retried.
+    retry_http_codes = [500, 502, 503, 504, 522, 524, 408, 429]
 
     default_headers = {
         'User-Agent': 'mocy'
     }
 
-    before_download_handlers = []
-    after_download_handlers = []
+    before_download_handlers = [random_useragent, download_stats]
+
+    after_download_handlers = [raise_http_error]
+
     pipes = []
 
     entry = []
@@ -70,6 +100,9 @@ class Spider:
         self._all_requests = 0
         self._all_responses = 0
         self._failed_urls = []
+
+        self._last_download_time = 0
+        self._lock = Lock()
 
     def parse(self, res: 'Response') -> Generator:
         yield res
@@ -157,9 +190,19 @@ class Spider:
                 return None
         return rv
 
+    def _wait(self):
+        with self._lock:
+            rest = time.time() - self._last_download_time
+            if self.download_delay > rest:
+                time.sleep(self.download_delay - rest)
+            self._last_download_time = time.time()
+
     def _download(self):
         while True:
             req = self._request_queue.get()
+
+            if self.download_delay > 0:
+                self._wait()
 
             try:
                 req = self._process_before_download(req)

@@ -8,8 +8,8 @@ class ExampleSpider(Spider):
         method='POST',
         session=True,
         data={
-            'nickname': 'sjtup',
-            'password': 'Sjtup313',
+            'nickname': 'xxx',
+            'password': 'xxx',
         }
     )
 

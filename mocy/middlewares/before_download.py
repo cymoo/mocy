@@ -1,14 +1,16 @@
 
+__all__ = [
+    'random_useragent',
+    'download_stats',
+]
+
+
 def random_useragent(spider, request):
-    pass
-
-
-def default_headers(spider, request):
-    pass
+    return request
 
 
 def download_stats(spider, request):
-    pass
+    return request
 
 
 def robottxt(spider, request):
