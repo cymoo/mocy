@@ -70,7 +70,8 @@ def get_enclosing_class(meth):
 
 
 class Logger:
-    logger_format = '[%(asctime)-15s] %(levelname)-8s: %(message)s'
+    logger_format = '[%(asctime)-15s] %(levelname)-7s: %(message)s'
+    date_format = '%Y-%m-%d %H:%M:%S'
 
     def __init__(self, name: str, level: int = logging.INFO) -> None:
         self._logger = logging.getLogger(name)
@@ -114,7 +115,7 @@ class Logger:
     def _stream_handler(self, stream, level, msg_filter=None):
         handler = logging.StreamHandler(stream)
         handler.setLevel(level)
-        formatter = logging.Formatter(self.logger_format)
+        formatter = logging.Formatter(self.logger_format, datefmt=self.date_format)
         handler.setFormatter(formatter)
         if msg_filter:
             handler.addFilter(msg_filter)

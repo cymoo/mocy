@@ -1,9 +1,10 @@
+import inspect
 import os
 import time
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, Callable
+from typing import Optional, Generator, Any, Union, Callable, Sequence
 
 import requests
 
@@ -19,7 +20,7 @@ from .request import Request
 from .response import Response
 from .middlewares import (
     random_useragent,
-    download_stats,
+    DownloadStats,
     raise_http_error
 )
 
@@ -60,9 +61,10 @@ class Spider:
     # The amount of time (in secs) that the downloader will wait before timeout.
     download_timeout = 30
 
-    # The maximum response size (in bytes) that downloader will download.
+    # The maximum response size (in mega bytes) that downloader will download.
     # If you want to disable it set to 0.
-    download_maxsize = 1024
+    # TODO: not yet supported
+    # download_maxsize = 100
 
     # The amount of time (in secs) that the downloader should wait
     # before downloading consecutive pages from the same website.
@@ -85,9 +87,9 @@ class Spider:
         'User-Agent': 'mocy'
     }
 
-    before_download_handlers = [random_useragent, download_stats]
+    before_download_handlers = [DownloadStats(), random_useragent]
 
-    after_download_handlers = [raise_http_error]
+    after_download_handlers = [DownloadStats(), raise_http_error]
 
     pipes = []
 
@@ -118,8 +120,8 @@ class Spider:
         logger.info('Spider is running...')
         default_parser = getattr(self, 'parse')
 
-        self._init_requests()
-        self._init_downloaders()
+        self._start_requests()
+        self._start_downloaders()
 
         while not self._completed:
             res = self._response_queue.get()
@@ -143,7 +145,7 @@ class Spider:
                             item.session = res.session
                         self._add_request(item)
                     else:
-                        self._process_pipes(item, res)
+                        self._start_pipes(item, res)
             except Exception as err:
                 err = ParseError(res.url, err)
                 err.res = res
@@ -156,46 +158,36 @@ class Spider:
                     err = SpiderError('Cannot close session', err)
                     self.handle_error(err)
 
-        logger.info('Spider exited; running time: {:.1f}s.'.format(time.time() - start))
+        logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
 
-    def _process_before_download(self, req: 'Request') -> Optional['Request']:
-        rv = req
-        for func in self.before_download_handlers:
-            rv = func(self, rv)
-            if not isinstance(rv, Request):
-                raise RequestIgnored(req.url)
-        return rv
+    def _start_requests(self) -> None:
+        entry = self.entry
+        if inspect.ismethod(entry):
+            entry = entry()
 
-    def _process_after_download(self, res: 'Response') -> Optional[Union['Response', 'Request']]:
-        rv = res
-        for func in self.after_download_handlers:
-            rv = func(self, rv)
-            if not isinstance(rv, requests.Response):
-                err = ResponseIgnored(res.url)
-                if isinstance(rv, Request): err.new_req = rv
-                raise err
-        return rv
+        entry = list(entry)
 
-    def _process_pipes(self, item: Any, res: 'Response') -> Any:
-        rv = item
-        for func in (self.pipes or (self.__class__.collect,)):
-            arg_count = func.__code__.co_argcount
-            if arg_count == 3:
-                rv = func(self, rv, res)
-            else:
-                rv = func(self, rv)
+        for req in entry:
+            assert isinstance(req, (str, Request))
+            if not isinstance(req, Request):
+                req = Request(req)
+            self._add_request(req)
 
-            if rv is None:
-                return None
-        return rv
+    def _add_request(self, req: 'Request', delay: Union[float, int] = 0) -> None:
+        req.retry = self.download_delay
+        req.timeout = self.download_timeout
+        self._all_requests += 1
+        if delay > 0:
+            self._request_queue.put_later(req, delay)
+        else:
+            self._request_queue.put(req)
 
-    def _wait(self):
-        with self._lock:
-            rest = time.time() - self._last_download_time
-            if self.download_delay > rest:
-                time.sleep(self.download_delay - rest)
-            self._last_download_time = time.time()
+    def _start_downloaders(self):
+        for idx in range(max(self.workers, 1)):
+            thread = Thread(target=self._download, name='downloader-{}'.format(idx))
+            thread.daemon = True
+            thread.start()
 
     def _download(self):
         while True:
@@ -205,7 +197,7 @@ class Spider:
                 self._wait()
 
             try:
-                req = self._process_before_download(req)
+                req = self._pre_download(req)
             except Exception as err:
                 if not isinstance(err, RequestIgnored):
                     err = RequestIgnored(req.url, err)
@@ -221,7 +213,7 @@ class Spider:
                 continue
 
             try:
-                res = self._process_after_download(res)
+                res = self._post_download(res)
             except Exception as err:
                 if not isinstance(err, ResponseIgnored):
                     err = ResponseIgnored(res.url, err)
@@ -230,29 +222,55 @@ class Spider:
 
             self._response_queue.put(res)
 
-    def _init_downloaders(self):
-        for idx in range(max(self.workers, 1)):
-            thread = Thread(target=self._download, name='downloader-{}'.format(idx))
-            thread.daemon = True
-            thread.start()
+    def _wait(self):
+        with self._lock:
+            rest = time.time() - self._last_download_time
+            if self.download_delay > rest:
+                time.sleep(self.download_delay - rest)
+            self._last_download_time = time.time()
 
-    def _init_requests(self) -> None:
-        entry = self.entry
-        if isinstance(entry, (str, Request)):
-            entry = [entry]
-        for req in entry:
-            if not isinstance(req, Request):
-                req = Request(req)
-            self._add_request(req)
+    def _pre_download(self, req: 'Request') -> Optional['Request']:
+        rv = req
+        for handler in self.before_download_handlers:
+            if not inspect.isfunction(handler):
+                if hasattr(handler, 'before_download'):
+                    handler = getattr(handler, 'before_download')
+                else:
+                    logger.warn('No `before_download` handler in {}.'.format(handler.__class__))
+                    continue
+            rv = handler(self, rv)
+            if not isinstance(rv, Request):
+                raise RequestIgnored(req.url)
+        return rv
 
-    def _add_request(self, req: 'Request', delay: Union[float, int] = 0) -> None:
-        req.retry = self.download_delay
-        req.timeout = self.download_timeout
-        self._all_requests += 1
-        if delay > 0:
-            self._request_queue.put_later(req, delay)
-        else:
-            self._request_queue.put(req)
+    def _post_download(self, res: 'Response') -> Optional[Union['Response', 'Request']]:
+        rv = res
+        for handler in self.after_download_handlers:
+            if not inspect.isfunction(handler):
+                if hasattr(handler, 'after_download'):
+                    handler = getattr(handler, 'after_download')
+                else:
+                    logger.warn('No `after_download` handler in {}.'.format(handler.__class__))
+                    continue
+            rv = handler(self, rv)
+            if not isinstance(rv, requests.Response):
+                err = ResponseIgnored(res.url)
+                if isinstance(rv, Request): err.new_req = rv
+                raise err
+        return rv
+
+    def _start_pipes(self, item: Any, res: 'Response') -> Any:
+        rv = item
+        for func in (self.pipes or (self.__class__.collect,)):
+            arg_count = func.__code__.co_argcount
+            if arg_count == 3:
+                rv = func(self, rv, res)
+            else:
+                rv = func(self, rv)
+
+            if rv is None:
+                return None
+        return rv
 
     def _ensure_valid_response(self, res: Union[SpiderError, requests.Response]) -> bool:
         if isinstance(res, requests.Response):
