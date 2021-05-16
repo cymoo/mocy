@@ -20,8 +20,8 @@ __all__ = [
 
 
 class DelayQueue(Queue):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, maxsize=0):
+        super().__init__(maxsize)
         self.pq = PriorityQueue()
         poller = Thread(target=self._poll, name='poller')
         poller.daemon = True

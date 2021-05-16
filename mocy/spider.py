@@ -96,8 +96,10 @@ class Spider:
 
     entry = []
 
+    max_request_queue_size = 512
+
     def __init__(self) -> None:
-        self._request_queue = DelayQueue()
+        self._request_queue = DelayQueue(self.max_request_queue_size)
         self._response_queue = Queue()
 
         self._all_requests = 0
