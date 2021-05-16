@@ -5,6 +5,7 @@ from functools import partial
 from queue import Queue
 from threading import Thread, Lock
 from typing import Optional, Generator, Any, Union, Callable, Sequence
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -143,6 +144,8 @@ class Spider:
                         if session and item.session is False:
                             close_session = False
                             item.session = res.session
+
+                        item.url = urljoin(res.url, item.url)
                         self._add_request(item)
                     else:
                         self._start_pipes(item, res)
@@ -182,6 +185,12 @@ class Spider:
             self._request_queue.put_later(req, delay)
         else:
             self._request_queue.put(req)
+
+    def _add_default_header(self, request: Request) -> None:
+        headers = request.headers
+        headers.setdefault('Host', urlparse(request.url).netloc)
+        for name, value in self.default_headers.items():
+            headers.setdefault(name, value)
 
     def _start_downloaders(self):
         for idx in range(max(self.workers, 1)):
