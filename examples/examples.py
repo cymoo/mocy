@@ -26,6 +26,19 @@ class ExampleSpider(Spider):
     #     (result)
 
 
+class LiaoXueFengSpider(Spider):
+    entry = [
+        'https://www.liaoxuefeng.com/wiki/1252599548343744/1255876875896416'
+    ]
+
+    def parse(self, res):
+        for item in res.select('#x-content'):
+            print(item.text)
+            yield item
+
+
 if __name__ == '__main__':
-    spider = ExampleSpider()
+    # spider = ExampleSpider()
+    # spider.start()
+    spider = LiaoXueFengSpider()
     spider.start()
