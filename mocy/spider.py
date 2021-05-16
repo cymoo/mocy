@@ -4,12 +4,12 @@ import time
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, Callable, Sequence
+from typing import Optional, Generator, Any, Union, Callable
 from urllib.parse import urljoin, urlparse
 
 import requests
 
-from .utils import logger, DelayQueue, get_enclosing_class
+from .utils import logger, DelayQueue, get_enclosing_class, random_range
 from .exceptions import (
     SpiderError,
     DownLoadError,
@@ -232,11 +232,15 @@ class Spider:
             self._response_queue.put(res)
 
     def _wait(self):
+        delay = self._random_delay() if self.random_download_delay else self.download_delay
         with self._lock:
             rest = time.time() - self._last_download_time
-            if self.download_delay > rest:
-                time.sleep(self.download_delay - rest)
+            if delay > rest:
+                time.sleep(delay - rest)
             self._last_download_time = time.time()
+
+    def _random_delay(self):
+        return random_range(self.download_delay, 0.5, 1.5)
 
     def _pre_download(self, req: 'Request') -> Optional['Request']:
         rv = req

@@ -14,8 +14,8 @@ class ExampleSpider(Spider):
         # yield 'http://httpbin.org/status/404',
 
     def login(self, res):
-        yield Request('http://qr.sjtup.com/admin/list', callback=self.parse_list)
-        yield Request('http://qr.sjtup.com/admin/edit', callback=self.parse_list)
+        yield Request('/admin/list', callback=self.parse_list)
+        yield Request('/admin/edit', callback=self.parse_list)
 
     def parse_list(self, res):
         for item in res.select('td:first-child a'):

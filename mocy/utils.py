@@ -1,16 +1,21 @@
 import functools
 import inspect
 import logging
+import re
 import sys
 import time
 from queue import Queue, PriorityQueue
+from random import random
+from typing import Union
 from threading import Thread
+from urllib.parse import urlparse
 
 
 __all__ = [
     'DelayQueue',
     'get_enclosing_class',
     'logger',
+    'random_range',
 ]
 
 
@@ -67,6 +72,25 @@ def get_enclosing_class(meth):
 
     # handle special descriptor objects
     return getattr(meth, '__objclass__', None)
+
+
+def random_range(value, scale1, scale2) -> float:
+    if scale1 > scale2:
+        lo, hi = scale2, scale1
+    else:
+        lo, hi = scale1, scale2
+    factor = lo + (hi - lo) * random()
+    return factor * value
+
+
+def add_http_if_no_scheme(url):
+    """Add http as the default scheme if it is missing from the url."""
+    match = re.match(r'^\w+://', url, flags=re.I)
+    if not match:
+        parts = urlparse(url)
+        scheme = "http:" if parts.netloc else "http://"
+        url = scheme + url
+    return url
 
 
 class Logger:
