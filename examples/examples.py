@@ -1,5 +1,6 @@
 from mocy import Spider, pipe, Request, logger
 from pprint import pprint
+import re
 
 
 class ExampleSpider(Spider):
@@ -37,8 +38,38 @@ class LiaoXueFengSpider(Spider):
             yield item
 
 
+class DoubanSpider(Spider):
+    entry = 'https://book.douban.com/tag/%E7%BC%96%E7%A8%8B?start=0&type=T'
+
+    def parse(self, res):
+        for item in res.select('.subject-item'):
+            title = re.sub(r'\s+', ' ', item.select('h2')[0].text.strip())
+            rating_el = item.select('.rating_nums')
+            rating = rating_el[0].text.strip() if rating_el else ''
+            yield title, rating
+
+        next_link = res.select('.paginator .next a')
+        if next_link:
+            next_url = next_link[0]['href']
+            yield Request(next_url)
+
+    def before_start(self) -> None:
+        self.books = []
+
+    def collect(self, item):
+        self.books.append(item)
+
+    def on_finish(self):
+        self.books.sort(key=lambda x: x[1], reverse=True)
+        with open('cs-books.txt', 'wt') as fp:
+            for book in self.books:
+                fp.write(book[1] + '---' + book[0] + '\n')
+
+
 if __name__ == '__main__':
     # spider = ExampleSpider()
     # spider.start()
-    spider = LiaoXueFengSpider()
+    # spider = LiaoXueFengSpider()
+    # spider.start()
+    spider = DoubanSpider()
     spider.start()
