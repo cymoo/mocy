@@ -4,12 +4,21 @@ import time
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, Callable
+from typing import Optional, Generator, Any, Union, Callable, MutableSequence, Sequence
 from urllib.parse import urljoin, urlparse
 
 import requests
 
-from .utils import logger, DelayQueue, get_enclosing_class, random_range
+from .utils import (
+    logger,
+    DelayQueue,
+    get_enclosing_class,
+    random_range,
+    assert_positive_integer,
+    assert_not_negative_integer,
+    assert_positive_number,
+    assert_not_negative_number,
+)
 from .exceptions import (
     SpiderError,
     DownLoadError,
@@ -80,6 +89,8 @@ class Spider:
 
     retry_delay = 3
 
+    max_request_queue_size = 512
+
     # HTTP response codes to retry.
     # Other errors (DNS or connection issues, etc) are always retried.
     retry_http_codes = [500, 502, 503, 504, 522, 524, 408, 429]
@@ -96,9 +107,9 @@ class Spider:
 
     entry = []
 
-    max_request_queue_size = 512
-
     def __init__(self) -> None:
+        self._check_config()
+
         self._request_queue = DelayQueue(self.max_request_queue_size)
         self._response_queue = Queue()
 
@@ -115,16 +126,24 @@ class Spider:
     def collect(self, item: Any) -> Any:
         logger.info(item)
 
-    def handle_error(self, reason: SpiderError) -> None:
+    def on_finish(self) -> None:
+        pass
+
+    def on_error(self, reason: SpiderError) -> None:
         logger.error(reason.msg, exc_info=reason.cause)
+
+    def before_start(self) -> None:
+        pass
 
     def start(self):
         start = time.time()
         logger.info('Spider is running...')
-        default_parser = getattr(self, 'parse')
 
+        self.before_start()
         self._start_requests()
         self._start_downloaders()
+
+        default_parser = getattr(self, 'parse')
 
         while not self._completed:
             res = self._response_queue.get()
@@ -141,37 +160,66 @@ class Spider:
             close_session = True
 
             try:
-                for item in parser(res):
-                    if isinstance(item, Request):
-                        if session and item.session is False:
-                            close_session = False
-                            item.session = res.session
+                result = parser(res)
+                if isinstance(result, (MutableSequence, Generator)):
+                    for item in parser(res):
+                        if isinstance(item, Request):
+                            if session and item.session is False:
+                                close_session = False
+                                item.session = res.session
 
-                        item.url = urljoin(res.url, item.url)
-                        self._add_request(item)
-                    else:
-                        self._start_pipes(item, res)
+                            item.url = urljoin(res.url, item.url)
+                            self._add_request(item)
+                        else:
+                            self._start_pipes(item, res)
             except Exception as err:
                 err = ParseError(res.url, err)
                 err.res = res
-                self.handle_error(err)
+                self.on_error(err)
 
             if session and close_session:
                 try:
                     session.close()
                 except Exception as err:
                     err = SpiderError('Cannot close session', err)
-                    self.handle_error(err)
+                    self.on_error(err)
 
         logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
+        self.on_finish()
+
+    def _check_config(self):
+        assert_positive_integer(self.workers)
+        assert_positive_integer(self.max_request_queue_size)
+        assert_not_negative_integer(self.retry_times)
+        assert_not_negative_number(self.retry_delay)
+        assert_not_negative_number(self.download_delay)
+
+        for http_code in self.retry_http_codes:
+            assert http_code in range(400, 600)
+
+        timeout = self.download_timeout
+        if isinstance(timeout, Sequence):
+            assert len(timeout) == 2
+            for num in timeout:
+                assert_positive_number(num)
+        else:
+            assert_positive_number(timeout)
+
+        random_delay = self.random_download_delay
+        assert isinstance(random_delay, (bool, Sequence))
+        if isinstance(random_delay, Sequence):
+            assert len(random_delay) == 2
+            for num in random_delay:
+                assert_positive_number(num)
 
     def _start_requests(self) -> None:
         entry = self.entry
         if inspect.ismethod(entry):
             entry = entry()
 
-        entry = list(entry)
+        if isinstance(entry, (str, Request)):
+            entry = [entry]
 
         for req in entry:
             assert isinstance(req, (str, Request))
@@ -179,10 +227,11 @@ class Spider:
                 req = Request(req)
             self._add_request(req)
 
-    def _add_request(self, req: 'Request', delay: Union[float, int] = 0) -> None:
-        req.retry = self.download_delay
-        req.timeout = self.download_timeout
+    def _add_request(self, req: 'Request', delay: Union[int, float] = 0) -> None:
+        # req.retry = self.retry_times
+        # req.timeout = self.download_timeout
         self._all_requests += 1
+        self._add_default_header(req)
         if delay > 0:
             self._request_queue.put_later(req, delay)
         else:
@@ -306,7 +355,7 @@ class Spider:
                 self._add_request(res.new_req)
 
         try:
-            self.handle_error(res)
+            self.on_error(res)
         except Exception as err:
             logger.error('Error in error handler!', exc_info=err)
 
