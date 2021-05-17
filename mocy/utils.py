@@ -16,6 +16,10 @@ __all__ = [
     'get_enclosing_class',
     'logger',
     'random_range',
+    'assert_positive_number',
+    'assert_not_negative_number',
+    'assert_positive_integer',
+    'assert_not_negative_integer',
 ]
 
 
@@ -81,6 +85,22 @@ def random_range(value, scale1, scale2) -> float:
         lo, hi = scale1, scale2
     factor = lo + (hi - lo) * random()
     return factor * value
+
+
+def assert_not_negative_number(num):
+    assert num >= 0 and isinstance(num, (int, float))
+
+
+def assert_positive_number(num):
+    assert num > 0 and isinstance(num, (int, float))
+
+
+def assert_not_negative_integer(num):
+    assert num >= 0 and isinstance(num, int)
+
+
+def assert_positive_integer(num):
+    assert num > 0 and isinstance(num, int)
 
 
 def add_http_if_no_scheme(url):
