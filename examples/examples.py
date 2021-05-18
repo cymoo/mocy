@@ -1,4 +1,5 @@
-from mocy import Spider, pipe, Request, logger
+from mocy import Spider, pipe, Request, logger, before_download, after_download
+from mocy.utils import random_ip
 from pprint import pprint
 import re
 
@@ -52,6 +53,16 @@ class DoubanSpider(Spider):
         if next_link:
             next_url = next_link[0]['href']
             yield Request(next_url)
+
+    @before_download
+    def fake_ip(self, req):
+        req.headers['X-Forwarded-For'] = random_ip()
+        return req
+
+    @before_download
+    def peek_header(self, req):
+        print(req.headers)
+        return req
 
     def before_start(self) -> None:
         self.books = []

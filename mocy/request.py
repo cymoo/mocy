@@ -30,6 +30,7 @@ class Request:
         self.session = session
         self.meta = meta or {}
         # self.retry = retry
+        self.retry = 0
 
         self.headers = headers or {}
         self.params = params

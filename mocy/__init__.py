@@ -1,4 +1,4 @@
-from .spider import *
+from .spider import Spider, before_download, after_download, pipe
 from .request import Request
 from .response import Response
 from .utils import logger

@@ -4,21 +4,11 @@ import time
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, Callable, MutableSequence, Sequence
+from typing import Optional, Generator, Any, Union, MutableSequence, Sequence
 from urllib.parse import urljoin, urlparse
 
 import requests
 
-from .utils import (
-    logger,
-    DelayQueue,
-    get_enclosing_class,
-    random_range,
-    assert_positive_integer,
-    assert_not_negative_integer,
-    assert_positive_number,
-    assert_not_negative_number,
-)
 from .exceptions import (
     SpiderError,
     DownLoadError,
@@ -26,12 +16,20 @@ from .exceptions import (
     RequestIgnored,
     ResponseIgnored
 )
-from .request import Request
-from .response import Response
 from .middlewares import (
     random_useragent,
     DownloadStats,
-    raise_http_error
+)
+from .request import Request
+from .response import Response
+from .utils import (
+    logger,
+    DelayQueue,
+    random_range,
+    assert_positive_integer,
+    assert_not_negative_integer,
+    assert_positive_number,
+    assert_not_negative_number,
 )
 
 __all__ = [
@@ -42,26 +40,19 @@ __all__ = [
 ]
 
 
-def _register_handlers(handler: Callable, name: str) -> Callable:
-    cls = get_enclosing_class(handler)
-    if name not in vars(cls):
-        handlers = getattr(Spider, name)
-        setattr(cls, name, handlers.copy())
-    handlers = getattr(cls, name)
-    handlers.append(handler)
-    return handler
-
-
 def before_download(func):
-    return _register_handlers(func, 'before_download_handlers')
+    func._hook_type = 1
+    return func
 
 
 def after_download(func):
-    return _register_handlers(func, 'after_download_handlers')
+    func._hook_type = 2
+    return func
 
 
 def pipe(func):
-    return _register_handlers(func, 'pipes')
+    func._hook_type = 3
+    return func
 
 
 class Spider:
@@ -70,11 +61,6 @@ class Spider:
 
     # The amount of time (in secs) that the downloader will wait before timeout.
     download_timeout = 30
-
-    # The maximum response size (in mega bytes) that downloader will download.
-    # If you want to disable it set to 0.
-    # TODO: not yet supported
-    # download_maxsize = 100
 
     # The amount of time (in secs) that the downloader should wait
     # before downloading consecutive pages from the same website.
@@ -87,13 +73,15 @@ class Spider:
     # Maximum number of times to retry.
     retry_times = 3
 
+    # The amount of time (in secs) that the downloader will wait
+    # before retrying a failed request.
     retry_delay = 3
-
-    max_request_queue_size = 512
 
     # HTTP response codes to retry.
     # Other errors (DNS or connection issues, etc) are always retried.
     retry_http_codes = [500, 502, 503, 504, 522, 524, 408, 429]
+
+    max_request_queue_size = 512
 
     default_headers = {
         'User-Agent': 'mocy'
@@ -101,7 +89,7 @@ class Spider:
 
     before_download_handlers = [DownloadStats(), random_useragent]
 
-    after_download_handlers = [DownloadStats(), raise_http_error]
+    after_download_handlers = [DownloadStats()]
 
     pipes = []
 
@@ -237,9 +225,9 @@ class Spider:
         else:
             self._request_queue.put(req)
 
-    def _add_default_header(self, request: Request) -> None:
-        headers = request.headers
-        headers.setdefault('Host', urlparse(request.url).netloc)
+    def _add_default_header(self, req: Request) -> None:
+        headers = req.headers
+        headers.setdefault('Host', urlparse(req.url).netloc)
         for name, value in self.default_headers.items():
             headers.setdefault(name, value)
 
@@ -283,7 +271,11 @@ class Spider:
             self._response_queue.put(res)
 
     def _wait(self):
-        delay = self._random_delay() if self.random_download_delay else self.download_delay
+        if self.random_download_delay:
+            delay = self._random_delay()
+        else:
+            delay = self.download_delay
+
         with self._lock:
             rest = time.time() - self._last_download_time
             if delay > rest:
@@ -291,7 +283,32 @@ class Spider:
             self._last_download_time = time.time()
 
     def _random_delay(self):
-        return random_range(self.download_delay, 0.5, 1.5)
+        random_delay = self.random_download_delay
+        if isinstance(random_delay, bool):
+            s1, s2 = 0.5, 1.5
+        else:
+            s1, s2 = random_delay
+        return random_range(self.download_delay, s1, s2)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not hasattr(cls, 'before_download_handlers'):
+            cls.before_download_handlers = Spider.before_download_handlers.copy()
+        if not hasattr(cls, 'after_download_handlers'):
+            cls.after_download_handlers = Spider.after_download_handlers.copy()
+        if not hasattr(cls, 'pipes'):
+            cls.pipes = Spider.pipes.copy()
+
+        # class attribute definition order is preserved from 3.6
+        for value in cls.__dict__.values():
+            if inspect.isfunction(value) and hasattr(value, '_hook_type'):
+                t = getattr(value, '_hook_type')
+                if t == 1:
+                    cls.before_download_handlers.append(value)
+                elif t == 2:
+                    cls.after_download_handlers.append(value)
+                else:
+                    cls.pipes.append(value)
 
     def _pre_download(self, req: 'Request') -> Optional['Request']:
         rv = req

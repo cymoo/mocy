@@ -1,21 +1,17 @@
-import functools
-import inspect
 import logging
 import re
 import sys
 import time
 from queue import Queue, PriorityQueue
-from random import random
-from typing import Union
+from random import random, randint
 from threading import Thread
 from urllib.parse import urlparse
 
-
 __all__ = [
     'DelayQueue',
-    'get_enclosing_class',
     'logger',
     'random_range',
+    'random_ip',
     'assert_positive_number',
     'assert_not_negative_number',
     'assert_positive_integer',
@@ -40,42 +36,8 @@ class DelayQueue(Queue):
             if item[0] <= time.time():
                 self.put(item[1])
             else:
+                time.sleep(0.05)
                 self.pq.put(item)
-
-
-def get_enclosing_class(meth):
-    """Get the class that defined a method.
-    Refer to: https://stackoverflow.com/questions/3589311/get-defining-class-of-unbound-method-object-in-python-3/25959545#25959545
-
-    >>> Logger == get_enclosing_class(Logger.info)
-    True
-    """
-
-    if isinstance(meth, functools.partial):
-        return get_enclosing_class(meth.func)
-
-    if inspect.ismethod(meth) or (
-            inspect.isbuiltin(meth)
-            and getattr(meth, '__self__', None) is not None
-            and getattr(meth.__self__, '__class__', None)
-    ):
-        for cls in inspect.getmro(meth.__self__.__class__):
-            if meth.__name__ in cls.__dict__:
-                return cls
-        # fallback to __qualname__ parsing
-        meth = getattr(meth, '__func__', meth)
-
-    if inspect.isfunction(meth):
-        cls = getattr(
-            inspect.getmodule(meth),
-            meth.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0],
-            None
-        )
-        if isinstance(cls, type):
-            return cls
-
-    # handle special descriptor objects
-    return getattr(meth, '__objclass__', None)
 
 
 def random_range(value, scale1, scale2) -> float:
@@ -111,6 +73,19 @@ def add_http_if_no_scheme(url):
         scheme = "http:" if parts.netloc else "http://"
         url = scheme + url
     return url
+
+
+def random_ip() -> str:
+    """A simple ipv4 generator that filters some special ips."""
+    specials = [0, 10, 100, 127, 172, 192, 198, 203, 224, 240, 255]
+
+    def gen(): return randint(0, 255)
+
+    while True:
+        prefix = gen()
+        if prefix not in specials:
+            break
+    return '.'.join(map(str, (prefix, gen(), gen(), gen())))
 
 
 class Logger:

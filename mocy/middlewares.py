@@ -1,6 +1,10 @@
 import random
 import time
-from mocy.utils import logger
+from typing import Sequence
+
+from .request import Request
+from .response import Response
+from .utils import logger
 
 
 user_agents_pc = [
@@ -37,7 +41,7 @@ class RandomUserAgent:
 
 
 def random_useragent(spider, req):
-    req.headers.setdefault('User-Agent', random.choice(user_agents_pc))
+    req.headers['User-Agent'] = random.choice(user_agents_pc)
     return req
 
 
@@ -45,9 +49,12 @@ def robottxt(spider, req):
     raise NotImplementedError
 
 
-def raise_http_error(spider, res):
-    res.raise_for_status()
-    return res
+class Retry:
+    def __init__(self, http_codes: Sequence[int]):
+        self.http_codes = http_codes
+
+    def after_download(self, spider, res: Response):
+        pass
 
 
 class DownloadStats:
