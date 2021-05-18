@@ -8,6 +8,7 @@ from typing import Optional, Generator, Any, Union, MutableSequence, Sequence
 from urllib.parse import urljoin, urlparse
 
 import requests
+from requests.exceptions import ConnectionError, Timeout
 
 from .exceptions import (
     SpiderError,
@@ -108,7 +109,10 @@ class Spider:
         self._last_download_time = 0
         self._lock = Lock()
 
-    def parse(self, res: 'Response') -> Generator:
+    def on_start(self) -> None:
+        pass
+
+    def parse(self, res: 'Response') -> Any:
         yield res
 
     def collect(self, item: Any) -> Any:
@@ -120,14 +124,11 @@ class Spider:
     def on_error(self, reason: SpiderError) -> None:
         logger.error(reason.msg, exc_info=reason.cause)
 
-    def before_start(self) -> None:
-        pass
-
     def start(self):
         start = time.time()
         logger.info('Spider is running...')
 
-        self.before_start()
+        self.on_start()
         self._start_requests()
         self._start_downloaders()
 
@@ -256,7 +257,8 @@ class Spider:
                 res = req.send()
             except Exception as err:
                 err = DownLoadError(req.url, err)
-                err.retry_req = req
+                if isinstance(err, (ConnectionError, Timeout)):
+                    err.retry_req = req
                 self._response_queue.put(err)
                 continue
 

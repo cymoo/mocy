@@ -64,7 +64,7 @@ class DoubanSpider(Spider):
         print(req.headers)
         return req
 
-    def before_start(self) -> None:
+    def on_start(self) -> None:
         self.books = []
 
     def collect(self, item):
