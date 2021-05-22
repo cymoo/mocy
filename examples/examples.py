@@ -61,7 +61,7 @@ class DoubanSpider(Spider):
 
     @before_download
     def peek_header(self, req):
-        print(req.headers)
+        pprint(req.__dict__)
         return req
 
     def on_start(self) -> None:

@@ -18,10 +18,7 @@ from .exceptions import (
     RequestIgnored,
     ResponseIgnored
 )
-from .middlewares import (
-    random_useragent,
-    DownloadStats,
-)
+from .middlewares import random_useragent
 from .request import Request
 from .response import Response
 from .utils import (
@@ -42,59 +39,67 @@ __all__ = [
 ]
 
 
-HOOK_TYPE = Enum('HOOK_TYPE', 'BEFORE AFTER PIPE')
+class Hook(Enum):
+    BEFORE_DOWNLOAD = 1
+    AFTER_DOWNLOAD = 2
+    PIPE = 3
 
 
 def before_download(func):
-    func._hook_type = HOOK_TYPE.BEFORE
+    func._hook_type = Hook.BEFORE_DOWNLOAD
     return func
 
 
 def after_download(func):
-    func._hook_type = HOOK_TYPE.AFTER
+    func._hook_type = Hook.AFTER_DOWNLOAD
     return func
 
 
 def pipe(func):
-    func._hook_type = HOOK_TYPE.PIPE
+    func._hook_type = Hook.PIPE
     return func
 
 
 class Spider:
     # The maximum number of concurrent requests that will be performed by the downloader.
-    workers = os.cpu_count() * 2
+    WORKERS = os.cpu_count() * 2
 
     # The amount of time (in secs) that the downloader will wait before timeout.
-    download_timeout = 30
+    TIMEOUT = 30
 
     # The amount of time (in secs) that the downloader should wait
     # before downloading consecutive pages from the same website.
-    download_delay = 0
+    DOWNLOAD_DELAY = 0
 
     # If enabled, the spider will wait a random time (between 0.5 * delay and 1.5 * delay)
     # while fetching requests from the same website.
-    random_download_delay = True
+    RANDOM_DOWNLOAD_DELAY = True
 
     # Maximum number of times to retry.
-    retry_times = 3
+    RETRY_TIMES = 3
+
+    # HTTP response codes to retry.
+    # Other errors (DNS or connection issues) are always retried.
+    # 502: Bad Gateway
+    # 503: Service Unavailable
+    # 504: Gateway Timeout
+    # 408: Request Timeout
+    # 429: Too Many Requests
+    RETRY_CODES = [500, 502, 503, 504, 408, 429]
 
     # The amount of time (in secs) that the downloader will wait
     # before retrying a failed request.
-    retry_delay = 3
+    RETRY_DELAY = 3
 
-    # HTTP response codes to retry.
-    # Other errors (DNS or connection issues, etc) are always retried.
-    retry_http_codes = [500, 502, 503, 504, 522, 524, 408, 429]
+    MAX_REQUEST_QUEUE_SIZE = 256
 
-    max_request_queue_size = 512
-
-    default_headers = {
+    DEFAULT_HEADERS = {
         'User-Agent': 'mocy'
     }
 
-    before_download_handlers = [DownloadStats(), random_useragent]
+    before_download_handlers = [random_useragent]
 
-    after_download_handlers = [DownloadStats()]
+    after_download_handlers = []
 
     pipes = []
 
@@ -103,7 +108,7 @@ class Spider:
     def __init__(self) -> None:
         self._check_config()
 
-        self._request_queue = DelayQueue(self.max_request_queue_size)
+        self._request_queue = DelayQueue(self.MAX_REQUEST_QUEUE_SIZE)
         self._response_queue = Queue()
 
         self._request_num = 0
@@ -182,16 +187,16 @@ class Spider:
         self.on_finish()
 
     def _check_config(self):
-        assert_positive_integer(self.workers)
-        assert_positive_integer(self.max_request_queue_size)
-        assert_not_negative_integer(self.retry_times)
-        assert_not_negative_number(self.retry_delay)
-        assert_not_negative_number(self.download_delay)
+        assert_positive_integer(self.WORKERS)
+        assert_positive_integer(self.MAX_REQUEST_QUEUE_SIZE)
+        assert_not_negative_integer(self.RETRY_TIMES)
+        assert_not_negative_number(self.RETRY_DELAY)
+        assert_not_negative_number(self.DOWNLOAD_DELAY)
 
-        for http_code in self.retry_http_codes:
+        for http_code in self.RETRY_CODES:
             assert http_code in range(400, 600)
 
-        timeout = self.download_timeout
+        timeout = self.TIMEOUT
         if isinstance(timeout, Sequence):
             assert len(timeout) == 2
             for num in timeout:
@@ -199,7 +204,7 @@ class Spider:
         else:
             assert_positive_number(timeout)
 
-        random_delay = self.random_download_delay
+        random_delay = self.RANDOM_DOWNLOAD_DELAY
         assert isinstance(random_delay, (bool, Sequence))
         if isinstance(random_delay, Sequence):
             assert len(random_delay) == 2
@@ -220,35 +225,38 @@ class Spider:
                 req = Request(req)
             self._add_request(req)
 
-    def _add_request(self, req: 'Request', delay: Union[int, float] = 0) -> None:
-        # req.retry = self.retry_times
-        # req.timeout = self.download_timeout
+    def _add_request(self, req: 'Request') -> None:
         self._request_num += 1
+
+        if req.timeout is None:
+            req.timeout = self.TIMEOUT
+
         self._add_default_header(req)
-        if delay > 0:
-            self._request_queue.put_later(req, delay)
+
+        if req.retry_num > 0 and self.RETRY_DELAY > 0:
+            self._request_queue.put_later(req, self.RETRY_DELAY)
         else:
             self._request_queue.put(req)
 
     def _add_default_header(self, req: Request) -> None:
         headers = req.headers
         headers.setdefault('Host', urlparse(req.url).netloc)
-        for name, value in self.default_headers.items():
+        for name, value in self.DEFAULT_HEADERS.items():
             headers.setdefault(name, value)
 
-    def _start_downloaders(self):
-        for idx in range(max(self.workers, 1)):
+    def _start_downloaders(self) -> None:
+        for idx in range(max(self.WORKERS, 1)):
             thread = Thread(target=self._download, name='downloader-{}'.format(idx))
             thread.daemon = True
             thread.start()
 
-    def _download(self):
+    def _download(self) -> None:
         while True:
             req = self._request_queue.get()
 
-            # if self.download_delay > 0:
-            self._wait(self._get_download_delay(req))
+            self._wait(self._get_download_delay())
 
+            # before download
             try:
                 req = self._pre_download(req)
             except Exception as err:
@@ -257,15 +265,25 @@ class Spider:
                 self._response_queue.put(err)
                 continue
 
+            # downloading
             try:
+                t0 = time.time()
                 res = req.send()
+                t1 = time.time()
+                logger.info('"{} {}" {} {:.2f}s'.format(
+                    req.method, req.url, res.status_code, t1 - t0
+                ))
+                self._check_status_codes(res)
+
             except Exception as err:
-                err = DownLoadError(req.url, err)
-                if isinstance(err, (ConnectionError, Timeout)):
+                if not isinstance(err, DownLoadError):
+                    err = DownLoadError(req.url, err)
+                if isinstance(err.cause, (ConnectionError, Timeout)):
                     err.retry_req = req
                 self._response_queue.put(err)
                 continue
 
+            # after download
             try:
                 res = self._post_download(res)
             except Exception as err:
@@ -276,42 +294,28 @@ class Spider:
 
             self._response_queue.put(res)
 
-    def _wait(self, delay):
-        # if self.random_download_delay:
-        #     delay = self._random_delay()
-        # else:
-        #     delay = self.download_delay
-        # if delay <= 0:
-        #     return
+    def _check_status_codes(self, res: Response) -> None:
+        if res.status_code in self.RETRY_CODES:
+            err = DownLoadError(url=res.url)
+            err.retry_req = res.req
+            raise err
+
+    def _wait(self, delay) -> None:
+        if delay <= 0:
+            return
 
         with self._lock:
-            if delay > 0:
-                rest = time.time() - self._last_download_time
-                if delay > rest:
-                    time.sleep(delay - rest)
+            rest = time.time() - self._last_download_time
+            if delay > rest:
+                time.sleep(delay - rest)
             self._last_download_time = time.time()
 
-    # def _random_delay(self):
-    #     random_delay = self.random_download_delay
-    #     if isinstance(random_delay, bool):
-    #         s1, s2 = 0.5, 1.5
-    #     else:
-    #         s1, s2 = random_delay
-    #     return random_range(self.download_delay, s1, s2)
-
-    def _get_download_delay(self, req: Request) -> Union[int, float]:
-        meta = req.meta
-
-        delay = self.download_delay
-        if 'download_delay' in meta:
-            delay = meta['download_delay']
-
+    def _get_download_delay(self) -> Union[int, float]:
+        delay = self.DOWNLOAD_DELAY
         if delay <= 0:
             return 0
 
-        random = self.random_download_delay
-        if 'random_download_delay' in meta:
-            random = meta['random_download_delay']
+        random = self.RANDOM_DOWNLOAD_DELAY
 
         if not random:
             return delay
@@ -323,22 +327,22 @@ class Spider:
 
         return random_range(delay, s1, s2)
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        if not hasattr(cls, 'before_download_handlers'):
+        if vars(cls).get('before_download_handlers') is None:
             cls.before_download_handlers = Spider.before_download_handlers.copy()
-        if not hasattr(cls, 'after_download_handlers'):
+        if vars(cls).get('after_download_handlers') is None:
             cls.after_download_handlers = Spider.after_download_handlers.copy()
-        if not hasattr(cls, 'pipes'):
+        if vars(cls).get('pipes') is None:
             cls.pipes = Spider.pipes.copy()
 
         # class attribute definition order is preserved from 3.6
         for value in cls.__dict__.values():
             if inspect.isfunction(value) and hasattr(value, '_hook_type'):
-                t = getattr(value, '_hook_type')
-                if t == HOOK_TYPE.BEFORE:
+                ht = getattr(value, '_hook_type')
+                if ht == Hook.BEFORE_DOWNLOAD:
                     cls.before_download_handlers.append(value)
-                elif t == HOOK_TYPE.AFTER:
+                elif ht == Hook.AFTER_DOWNLOAD:
                     cls.after_download_handlers.append(value)
                 else:
                     cls.pipes.append(value)
@@ -368,8 +372,9 @@ class Spider:
                     continue
             rv = handler(self, rv)
             if not isinstance(rv, requests.Response):
-                err = ResponseIgnored(res.url)
-                if isinstance(rv, Request): err.new_req = rv
+                err = ResponseIgnored(res.url)  # or res.req.url?
+                if isinstance(rv, Request):
+                    err.new_req = rv
                 raise err
         return rv
 
@@ -394,9 +399,9 @@ class Spider:
             pass
         elif isinstance(res, DownLoadError):
             req = res.retry_req
-            if req.retry > 0:
-                req.retry -= 1
-                # TODO: a retry delay?
+            if req.retry_num <= self.RETRY_TIMES:
+                req.retry_num += 1
+                logger.error('Retry (num={}) {}'.format(req.retry_num, req.url))
                 self._add_request(req)
             else:
                 self._failed_urls.append(req.url)
@@ -413,7 +418,8 @@ class Spider:
 
     def _log_failed_urls(self) -> None:
         urls = self._failed_urls
-        if not urls: return
+        if not urls:
+            return
 
         num = len(urls)
         s = 's' if num > 1 else ''

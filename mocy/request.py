@@ -1,5 +1,5 @@
 from numbers import Number
-from typing import Optional, Union, Callable, Tuple
+from typing import Optional, Union, Callable, Tuple, Sequence
 
 import requests
 
@@ -9,28 +9,26 @@ class Request:
                  url: str,
                  method: str = 'GET',
                  callback: Optional[Callable] = None,
+
                  session: Union[bool, dict, requests.Session] = False,
                  state: Optional[dict] = None,
-                 meta: Optional[dict] = None,
-                 # retry: int = 0,
+
                  headers: Optional[dict] = None,
                  cookies: Optional[dict] = None,
                  params: Optional[dict] = None,
                  data: Optional[dict] = None,
                  json: Optional[dict] = None,
                  files: Optional[dict] = None,
-                 timeout: Optional[Union[Tuple[Number], Number]] = None,
                  proxies: Optional[dict] = None,
                  verify: bool = True,
-                 **kwargs):
+                 timeout: Optional[Union[Tuple[Number, Number], Number]] = None,
+                 **kwargs) -> None:
         self.url = url
         self.method = method
         self.callback = callback
-        self.state = state or {}
+
         self.session = session
-        self.meta = meta or {}
-        # self.retry = retry
-        self.retry = 0
+        self.state = state or {}
 
         self.headers = headers or {}
         self.params = params
@@ -38,11 +36,13 @@ class Request:
         self.json = json
         self.files = files
         self.cookies = cookies
-        self.timeout = timeout
         self.proxies = proxies
         self.verify = verify
+        self.timeout = timeout
 
         self.kwargs = kwargs
+
+        self.retry_num = 0
 
     def _make_session(self) -> Optional[requests.Session]:
         session = self.session
@@ -59,7 +59,7 @@ class Request:
             return None
 
     @property
-    def initial(self):
+    def initial(self) -> bool:
         """Whether it is a unique request or the first request in a session."""
         return not isinstance(self.session, requests.Session)
 
@@ -71,7 +71,7 @@ class Request:
             if value: args[name] = value
 
         for item in ('headers', 'cookies', 'params', 'data',
-                     'json', 'files', 'timeout', 'proxies', 'verify'):
+                     'json', 'files', 'proxies', 'verify', 'timeout'):
             add(item)
 
         args.update(self.kwargs)
@@ -80,7 +80,8 @@ class Request:
     def send(self) -> 'Response':
         it = requests
         sess = self._make_session()
-        if sess: it = sess
+        if sess:
+            it = sess
 
         res = it.request(self.method, self.url, **self._prepare_args())
         res.req = self
@@ -89,7 +90,7 @@ class Request:
         res.session = sess
         return res
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<Request [{}]>'.format(self.method)
 
 
