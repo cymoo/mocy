@@ -1,6 +1,7 @@
 import inspect
 import os
 import time
+from enum import Enum
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
@@ -41,18 +42,21 @@ __all__ = [
 ]
 
 
+HOOK_TYPE = Enum('HOOK_TYPE', 'BEFORE AFTER PIPE')
+
+
 def before_download(func):
-    func._hook_type = 1
+    func._hook_type = HOOK_TYPE.BEFORE
     return func
 
 
 def after_download(func):
-    func._hook_type = 2
+    func._hook_type = HOOK_TYPE.AFTER
     return func
 
 
 def pipe(func):
-    func._hook_type = 3
+    func._hook_type = HOOK_TYPE.PIPE
     return func
 
 
@@ -102,8 +106,8 @@ class Spider:
         self._request_queue = DelayQueue(self.max_request_queue_size)
         self._response_queue = Queue()
 
-        self._all_requests = 0
-        self._all_responses = 0
+        self._request_num = 0
+        self._response_num = 0
         self._failed_urls = []
 
         self._last_download_time = 0
@@ -136,7 +140,7 @@ class Spider:
 
         while not self._completed:
             res = self._response_queue.get()
-            self._all_responses += 1
+            self._response_num += 1
 
             if not self._ensure_valid_response(res):
                 continue
@@ -219,7 +223,7 @@ class Spider:
     def _add_request(self, req: 'Request', delay: Union[int, float] = 0) -> None:
         # req.retry = self.retry_times
         # req.timeout = self.download_timeout
-        self._all_requests += 1
+        self._request_num += 1
         self._add_default_header(req)
         if delay > 0:
             self._request_queue.put_later(req, delay)
@@ -242,8 +246,8 @@ class Spider:
         while True:
             req = self._request_queue.get()
 
-            if self.download_delay > 0:
-                self._wait()
+            # if self.download_delay > 0:
+            self._wait(self._get_download_delay(req))
 
             try:
                 req = self._pre_download(req)
@@ -272,25 +276,52 @@ class Spider:
 
             self._response_queue.put(res)
 
-    def _wait(self):
-        if self.random_download_delay:
-            delay = self._random_delay()
-        else:
-            delay = self.download_delay
+    def _wait(self, delay):
+        # if self.random_download_delay:
+        #     delay = self._random_delay()
+        # else:
+        #     delay = self.download_delay
+        # if delay <= 0:
+        #     return
 
         with self._lock:
-            rest = time.time() - self._last_download_time
-            if delay > rest:
-                time.sleep(delay - rest)
+            if delay > 0:
+                rest = time.time() - self._last_download_time
+                if delay > rest:
+                    time.sleep(delay - rest)
             self._last_download_time = time.time()
 
-    def _random_delay(self):
-        random_delay = self.random_download_delay
-        if isinstance(random_delay, bool):
+    # def _random_delay(self):
+    #     random_delay = self.random_download_delay
+    #     if isinstance(random_delay, bool):
+    #         s1, s2 = 0.5, 1.5
+    #     else:
+    #         s1, s2 = random_delay
+    #     return random_range(self.download_delay, s1, s2)
+
+    def _get_download_delay(self, req: Request) -> Union[int, float]:
+        meta = req.meta
+
+        delay = self.download_delay
+        if 'download_delay' in meta:
+            delay = meta['download_delay']
+
+        if delay <= 0:
+            return 0
+
+        random = self.random_download_delay
+        if 'random_download_delay' in meta:
+            random = meta['random_download_delay']
+
+        if not random:
+            return delay
+
+        if random is True:
             s1, s2 = 0.5, 1.5
         else:
-            s1, s2 = random_delay
-        return random_range(self.download_delay, s1, s2)
+            s1, s2 = random
+
+        return random_range(delay, s1, s2)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -305,9 +336,9 @@ class Spider:
         for value in cls.__dict__.values():
             if inspect.isfunction(value) and hasattr(value, '_hook_type'):
                 t = getattr(value, '_hook_type')
-                if t == 1:
+                if t == HOOK_TYPE.BEFORE:
                     cls.before_download_handlers.append(value)
-                elif t == 2:
+                elif t == HOOK_TYPE.AFTER:
                     cls.after_download_handlers.append(value)
                 else:
                     cls.pipes.append(value)
@@ -391,4 +422,4 @@ class Spider:
 
     @property
     def _completed(self) -> bool:
-        return self._all_requests == self._all_responses
+        return self._request_num == self._response_num
