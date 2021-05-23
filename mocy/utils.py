@@ -12,6 +12,7 @@ __all__ = [
     'logger',
     'random_range',
     'random_ip',
+    'identity',
     'assert_positive_number',
     'assert_not_negative_number',
     'assert_positive_integer',
@@ -36,8 +37,8 @@ class DelayQueue(Queue):
             if item[0] <= time.time():
                 self.put(item[1])
             else:
-                time.sleep(0.05)
                 self.pq.put(item)
+                time.sleep(0.05)
 
 
 def random_range(value, scale1, scale2) -> float:
@@ -47,6 +48,10 @@ def random_range(value, scale1, scale2) -> float:
         lo, hi = scale1, scale2
     factor = lo + (hi - lo) * random()
     return factor * value
+
+
+def identity(x):
+    return x
 
 
 def assert_not_negative_number(num):

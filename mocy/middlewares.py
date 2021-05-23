@@ -10,6 +10,17 @@ user_agents = [
 ]
 
 
-def random_useragent(spider, req):
-    req.headers['User-Agent'] = random.choice(user_agents)
-    return req
+# function form
+def random_useragent(spider, request):
+    if request.initial:
+        request.headers['User-Agent'] = random.choice(user_agents)
+    return request
+
+
+# class form
+class SomeMiddleware:
+    def before_download(self, spider, request):
+        return request
+
+    def after_download(self, spider, response):
+        return response

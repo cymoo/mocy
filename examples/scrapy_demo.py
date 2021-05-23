@@ -1,7 +1,7 @@
 import scrapy
 
 
-# 竞品分析
+# a scrapy demo
 class BlogSpider(scrapy.Spider):
     name = 'blogspider'
     start_urls = ['https://www.zyte.com/blog/']
@@ -15,5 +15,5 @@ class BlogSpider(scrapy.Spider):
 
 
 if __name__ == '__main__':
-    # scrapy runspider myspider.py
+    # scrapy runspider scrapy_demo.py
     pass

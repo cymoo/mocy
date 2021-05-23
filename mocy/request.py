@@ -60,7 +60,7 @@ class Request:
 
     @property
     def initial(self) -> bool:
-        """Whether it is a unique request or the first request in a session."""
+        """Whether it is an independent request or the first request in a session."""
         return not isinstance(self.session, requests.Session)
 
     def _prepare_args(self) -> dict:
