@@ -78,9 +78,9 @@ class DoubanSpider(Spider):
 
 
 if __name__ == '__main__':
-    # spider = ExampleSpider()
-    # spider.start()
+    spider = ExampleSpider()
+    spider.start()
     # spider = LiaoXueFengSpider()
     # spider.start()
-    spider = DoubanSpider()
-    spider.start()
+    # spider = DoubanSpider()
+    # spider.start()

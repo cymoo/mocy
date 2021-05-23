@@ -39,24 +39,24 @@ __all__ = [
 ]
 
 
-class Hook(Enum):
+class HandlerType(Enum):
     BEFORE_DOWNLOAD = 1
     AFTER_DOWNLOAD = 2
     PIPE = 3
 
 
 def before_download(func):
-    func._hook_type = Hook.BEFORE_DOWNLOAD
+    func._ht = HandlerType.BEFORE_DOWNLOAD
     return func
 
 
 def after_download(func):
-    func._hook_type = Hook.AFTER_DOWNLOAD
+    func._ht = HandlerType.AFTER_DOWNLOAD
     return func
 
 
 def pipe(func):
-    func._hook_type = Hook.PIPE
+    func._ht = HandlerType.PIPE
     return func
 
 
@@ -133,7 +133,7 @@ class Spider:
     def on_error(self, reason: SpiderError) -> None:
         logger.error(reason.msg, exc_info=reason.cause)
 
-    def start(self):
+    def start(self) -> None:
         start = time.time()
         logger.info('Spider is running...')
 
@@ -172,6 +172,7 @@ class Spider:
                             self._start_pipes(item, res)
             except Exception as err:
                 err = ParseError(res.url, err)
+                err.req = res.req
                 err.res = res
                 self.on_error(err)
 
@@ -262,6 +263,7 @@ class Spider:
             except Exception as err:
                 if not isinstance(err, RequestIgnored):
                     err = RequestIgnored(req.url, err)
+                err.req = req
                 self._response_queue.put(err)
                 continue
 
@@ -279,7 +281,8 @@ class Spider:
                 if not isinstance(err, DownLoadError):
                     err = DownLoadError(req.url, err)
                 if isinstance(err.cause, (ConnectionError, Timeout)):
-                    err.retry_req = req
+                    err.will_retry = True
+                err.req = req
                 self._response_queue.put(err)
                 continue
 
@@ -288,7 +291,9 @@ class Spider:
                 res = self._post_download(res)
             except Exception as err:
                 if not isinstance(err, ResponseIgnored):
-                    err = ResponseIgnored(res.url, err)
+                    err = ResponseIgnored(res.req.url, err)
+                err.req = req
+                err.res = res
                 self._response_queue.put(err)
                 continue
 
@@ -296,8 +301,9 @@ class Spider:
 
     def _check_status_codes(self, res: Response) -> None:
         if res.status_code in self.RETRY_CODES:
-            err = DownLoadError(url=res.url)
-            err.retry_req = res.req
+            err = DownLoadError(url=res.req.url)
+            err.will_retry = True
+            err.res = res
             raise err
 
     def _wait(self, delay) -> None:
@@ -338,11 +344,11 @@ class Spider:
 
         # class attribute definition order is preserved from 3.6
         for value in cls.__dict__.values():
-            if inspect.isfunction(value) and hasattr(value, '_hook_type'):
-                ht = getattr(value, '_hook_type')
-                if ht == Hook.BEFORE_DOWNLOAD:
+            if inspect.isfunction(value) and hasattr(value, '_ht'):
+                ht = getattr(value, '_ht')
+                if ht == HandlerType.BEFORE_DOWNLOAD:
                     cls.before_download_handlers.append(value)
-                elif ht == Hook.AFTER_DOWNLOAD:
+                elif ht == HandlerType.AFTER_DOWNLOAD:
                     cls.after_download_handlers.append(value)
                 else:
                     cls.pipes.append(value)
@@ -372,7 +378,7 @@ class Spider:
                     continue
             rv = handler(self, rv)
             if not isinstance(rv, requests.Response):
-                err = ResponseIgnored(res.url)  # or res.req.url?
+                err = ResponseIgnored(res.req.url)  # or res.url?
                 if isinstance(rv, Request):
                     err.new_req = rv
                 raise err
@@ -398,8 +404,8 @@ class Spider:
         if isinstance(res, RequestIgnored):
             pass
         elif isinstance(res, DownLoadError):
-            req = res.retry_req
-            if req.retry_num <= self.RETRY_TIMES:
+            req = res.req
+            if res.will_retry and req.retry_num <= self.RETRY_TIMES:
                 req.retry_num += 1
                 logger.error('Retry (num={}) {}'.format(req.retry_num, req.url))
                 self._add_request(req)

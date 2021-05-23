@@ -22,7 +22,7 @@ class ResponseIgnored(SpiderError):
 
 class DownLoadError(SpiderError):
     def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
-        self.retry_req = None
+        self.will_retry = False
         super().__init__('Cannot download from: {}'.format(url), cause)
 
 
