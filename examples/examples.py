@@ -10,7 +10,7 @@ class ExampleSpider(Spider):
             'http://qr.sjtup.com/admin/login',
             method='POST',
             session=True,
-            data={'nickname': 'sjtup', 'password': 'xxx'},
+            data={'nickname': 'sjtup', 'password': 'Sjtup313'},
             callback=self.login,
         )
         # yield 'http://httpbin.org/status/404',
@@ -77,10 +77,24 @@ class DoubanSpider(Spider):
                 fp.write(book[1] + '---' + book[0] + '\n')
 
 
+class FoterSpider(Spider):
+    def entry(self):
+        for i in range(1):
+            yield f'https://foter.com/search/instant/?q=girl&page={i+1}'
+
+    def parse(self, res):
+        pprint(res.request.headers)
+        print(res.text)
+        for img in res.select('#scrollingcontent img'):
+            print(img['src'])
+
+
 if __name__ == '__main__':
     spider = ExampleSpider()
     spider.start()
     # spider = LiaoXueFengSpider()
     # spider.start()
     # spider = DoubanSpider()
+    # spider.start()
+    # spider = FoterSpider()
     # spider.start()

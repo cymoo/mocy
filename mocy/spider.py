@@ -134,6 +134,19 @@ class Spider:
         start = time.time()
         logger.info('Spider is running...')
 
+        for item in self:
+            if isinstance(item, SpiderError):
+                try:
+                    self.on_error(item)
+                except Exception as err:
+                    logger.error('Error in error handler!', exc_info=err)
+            else:
+                self._start_pipes(*item)
+
+        logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
+        self._log_failed_urls()
+
+    def __iter__(self):
         self.on_start()
         self._start_requests()
         self._start_downloaders()
@@ -142,7 +155,9 @@ class Spider:
             res = self._response_queue.get()
             self._response_num += 1
 
-            if not self._ensure_valid_response(res):
+            err = self._check_response(res)
+            if err:
+                yield err
                 continue
 
             res.select = partial(Response.select, res)
@@ -165,22 +180,19 @@ class Spider:
                             req.url = urljoin(res.url, req.url)
                             self._add_request(req)
                         else:
-                            self._start_pipes(item, res)
+                            yield item, res
             except Exception as err:
                 err = ParseError(res.req.url, err)
                 err.req = res.req
                 err.res = res
-                self.on_error(err)
+                yield err
 
             if session and close_session:
                 try:
                     session.close()
                 except Exception as err:
                     err = SpiderError('Cannot close session', err)
-                    self.on_error(err)
-
-        logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
-        self._log_failed_urls()
+                    yield err
         self.on_finish()
 
     @classmethod
@@ -401,9 +413,9 @@ class Spider:
                 return None
         return rv
 
-    def _ensure_valid_response(self, res: Union[SpiderError, requests.Response]) -> bool:
+    def _check_response(self, res: Union[SpiderError, requests.Response]) -> Optional[SpiderError]:
         if isinstance(res, requests.Response):
-            return True
+            return None
 
         err = res
         if isinstance(err, RequestIgnored):
@@ -424,12 +436,7 @@ class Spider:
             if err.new_req:
                 self._add_request(err.new_req)
 
-        try:
-            self.on_error(err)
-        except Exception as e:
-            logger.error('Error in error handler!', exc_info=e)
-
-        return False
+        return err
 
     def _log_failed_urls(self) -> None:
         urls = self._failed_urls
