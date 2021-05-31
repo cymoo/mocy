@@ -5,7 +5,7 @@ from enum import Enum
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, MutableSequence, Sequence
+from typing import Optional, Generator, Any, Union, MutableSequence, Sequence, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -146,7 +146,7 @@ class Spider:
         logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[Union[SpiderError, Tuple[Any, requests.Response]], None, None]:
         self.on_start()
         self._start_requests()
         self._start_downloaders()
@@ -191,8 +191,7 @@ class Spider:
                 try:
                     session.close()
                 except Exception as err:
-                    err = SpiderError('Cannot close session', err)
-                    yield err
+                    yield SpiderError('Cannot close session', err)
         self.on_finish()
 
     @classmethod
