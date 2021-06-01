@@ -13,10 +13,11 @@ from requests.exceptions import ConnectionError, Timeout
 
 from .exceptions import (
     SpiderError,
-    DownLoadError,
-    ParseError,
     RequestIgnored,
-    ResponseIgnored
+    DownLoadError,
+    ResponseIgnored,
+    ParseError,
+    PipeError,
 )
 from .middlewares import random_useragent
 from .request import Request
@@ -135,13 +136,24 @@ class Spider:
         logger.info('Spider is running...')
 
         for item in self:
-            if isinstance(item, SpiderError):
+            error = None
+            if not isinstance(item, SpiderError):
                 try:
-                    self.on_error(item)
+                    self._start_pipes(*item)
                 except Exception as err:
-                    logger.error('Error in error handler!', exc_info=err)
+                    req, res = item[1].req, item[1]
+                    error = PipeError(req.url, err)
+                    error.req, error.res = req, res
             else:
-                self._start_pipes(*item)
+                error = item
+
+            if not error:
+                return
+
+            try:
+                self.on_error(error)
+            except Exception as err:
+                logger.error('Error in error handler!', exc_info=err)
 
         logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
@@ -297,7 +309,7 @@ class Spider:
                 t0 = time.time()
                 res = req.send()
                 t1 = time.time()
-                logger.info('"{} {}" {} {:.2f}s'.format(
+                logger.debug('"{} {}" {} {:.2f}s'.format(
                     req.method, req.url, res.status_code, t1 - t0
                 ))
                 self._check_status_codes(res)
@@ -424,7 +436,7 @@ class Spider:
             if err.will_retry:
                 if req.retry_num <= self.RETRY_TIMES:
                     req.retry_num += 1
-                    logger.info('Attempt to retry ({}) for {}.'.format(req.retry_num, req.url))
+                    logger.debug('Attempt to retry ({}) for {}.'.format(req.retry_num, req.url))
                     self._add_request(req)
                 else:
                     logger.error('Retried {} times for {}, but still failed.'.format(self.RETRY_TIMES, req.url))

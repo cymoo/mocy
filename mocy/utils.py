@@ -97,7 +97,7 @@ class Logger:
     logger_format = '[%(asctime)-15s] %(levelname)-7s: %(message)s'
     date_format = '%Y-%m-%d %H:%M:%S'
 
-    def __init__(self, name: str, level: int = logging.INFO) -> None:
+    def __init__(self, name: str, level: int = logging.DEBUG) -> None:
         self._logger = logging.getLogger(name)
         self._logger.setLevel(level)
         self._add_stream_handlers()

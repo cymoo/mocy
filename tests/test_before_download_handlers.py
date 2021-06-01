@@ -1,9 +1,11 @@
-import pytest
 from contextlib import contextmanager
-from mocy import Spider, before_download
-from mocy.request import Request
-from mocy.exceptions import SpiderError, RequestIgnored, ResponseIgnored
+
+import pytest
 import requests
+
+from mocy import Spider, before_download
+from mocy.exceptions import SpiderError, RequestIgnored
+from mocy.request import Request
 
 
 class MySpider(Spider):

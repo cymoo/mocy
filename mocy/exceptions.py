@@ -28,5 +28,9 @@ class DownLoadError(SpiderError):
 
 class ParseError(SpiderError):
     def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
-        super().__init__('Cannot parse response from {}'.format(url), cause)
+        super().__init__('Error occurred when parsing response from {}'.format(url), cause)
 
+
+class PipeError(SpiderError):
+    def __init__(self, url: str, cause: Optional[Exception] = None) -> None:
+        super().__init__('Error occurred when collecting results from {}'.format(url), cause)
