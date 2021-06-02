@@ -1,5 +1,7 @@
 import logging
 
+import requests
+
 from mocy import Spider, pipe
 
 
@@ -21,8 +23,24 @@ class MySpider(Spider):
         return result + '1'
 
 
+def return_none(spider, result):
+    return None
+
+
+def return_some(spider, result):
+    if not result.startswith('Web'):
+        return result
+
+
+def return_some_and_check_arguments(spider, result, response):
+    assert isinstance(response, requests.Response)
+    assert isinstance(spider, Spider)
+    if not result.startswith('Web'):
+        return result
+
+
 class TestPipes:
-    def start(self, do_assert, handlers=None):
+    def start(self, func, handlers=None):
         old_handlers = MySpider.pipes
         if handlers:
             MySpider.pipes = handlers
@@ -30,7 +48,7 @@ class TestPipes:
         for item, res in spider:
             value = spider._start_pipes(item, res)
             if value is not None:
-                do_assert(value)
+                func(value)
         MySpider.pipes = old_handlers
 
     def test_using_decorator(self):
@@ -40,18 +58,15 @@ class TestPipes:
 
         self.start(do_assert)
 
-    def test_raise_error(self, caplog):
-        from mocy import logger
-        logger.set_level(logging.ERROR)
+    def test_return_none(self):
+        def cb(value):
+            raise Exception('cannot be here')
 
-        class MySpider(Spider):
-            entry = 'https://daydream.site/'
+        self.start(cb, [return_none, return_some])
 
-            @pipe
-            def raise_error(self, result):
-                raise ValueError('num 42')
+    def test_return_some(self):
+        def do_assert(value):
+            assert not value.startswith('Web')
 
-        spider = MySpider()
-        spider.start()
-        record = caplog.records[0]
-        assert 'Error occurred when collecting results' in record.message
+        self.start(do_assert, [return_some])
+        self.start(do_assert, [return_some_and_check_arguments])
