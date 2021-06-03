@@ -18,6 +18,7 @@ from .exceptions import (
     ResponseIgnored,
     ParseError,
     PipeError,
+    FailedStatusCode,
 )
 from .middlewares import random_useragent
 from .request import Request
@@ -129,7 +130,8 @@ class Spider:
         pass
 
     def on_error(self, reason):
-        logger.error(reason.msg, exc_info=reason.cause)
+        # logger.error(reason.msg, exc_info=reason.cause)
+        logger.error(reason.msg)
 
     def start(self):
         start = time.time()
@@ -148,14 +150,14 @@ class Spider:
                 error = item
 
             if not error:
-                return
+                continue
 
             try:
                 self.on_error(error)
             except Exception as err:
                 logger.error('Error in error handler!', exc_info=err)
 
-        logger.info('Spider exited; running time: {:.2f}s.'.format(time.time() - start))
+        logger.info('Spider exited; total running time {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
 
     def __iter__(self) -> Generator[Union[SpiderError, Tuple[Any, requests.Response]], None, None]:
@@ -167,9 +169,10 @@ class Spider:
             res = self._response_queue.get()
             self._response_num += 1
 
-            err = self._check_response(res)
-            if err:
-                yield err
+            if isinstance(res, SpiderError):
+                err = self._check_error(res)
+                if err:
+                    yield err
                 continue
 
             res.select = partial(Response.select, res)
@@ -241,7 +244,7 @@ class Spider:
                 if hasattr(handler, name):
                     hdl = getattr(handler, name)
                 else:
-                    logger.warn('No `{}` handler in {}.'.format(name, handler.__class__))
+                    logger.warn('No `{}` handler in {}'.format(name, handler.__class__))
                     hdl = identity
 
                 handlers[idx] = hdl
@@ -309,7 +312,7 @@ class Spider:
                 t0 = time.time()
                 res = req.send()
                 t1 = time.time()
-                logger.debug('"{} {}" {} {:.2f}s'.format(
+                logger.info('"{} {}" {} {:.2f}s'.format(
                     req.method, req.url, res.status_code, t1 - t0
                 ))
                 self._check_status_codes(res)
@@ -317,8 +320,8 @@ class Spider:
             except Exception as err:
                 if not isinstance(err, DownLoadError):
                     err = DownLoadError(req.url, err)
-                if isinstance(err.cause, (ConnectionError, Timeout)):
-                    err.will_retry = True
+                if isinstance(err.cause, (ConnectionError, Timeout, FailedStatusCode)):
+                    err.need_retry = True
                 err.req = req
                 self._response_queue.put(err)
                 continue
@@ -339,8 +342,7 @@ class Spider:
     @classmethod
     def _check_status_codes(cls, res: Response) -> None:
         if res.status_code in cls.RETRY_CODES:
-            err = DownLoadError(url=res.req.url)
-            err.will_retry = True
+            err = DownLoadError(res.req.url, FailedStatusCode(res.status_code))
             err.res = res
             raise err
 
@@ -424,30 +426,28 @@ class Spider:
                 return None
         return rv
 
-    def _check_response(self, res: Union[SpiderError, requests.Response]) -> Optional[SpiderError]:
-        if isinstance(res, requests.Response):
-            return None
-
-        err = res
-        if isinstance(err, RequestIgnored):
-            pass
-        elif isinstance(err, DownLoadError):
-            req = err.req
-            if err.will_retry:
-                if req.retry_num <= self.RETRY_TIMES:
-                    req.retry_num += 1
-                    logger.debug('Attempt to retry ({}) for {}.'.format(req.retry_num, req.url))
-                    self._add_request(req)
-                else:
-                    logger.error('Retried {} times for {}, but still failed.'.format(self.RETRY_TIMES, req.url))
-                    self._failed_urls.append(req.url)
+    def _check_error(self, error: SpiderError) -> Optional[SpiderError]:
+        if isinstance(error, RequestIgnored):
+            if error.cause:
+                return error
+            else:
+                logger.debug(f'Request for {error.req.url} was ignored')
+        elif isinstance(error, ResponseIgnored):
+            if error.new_req:
+                self._add_request(error.new_req)
+            if error.cause:
+                return error
+            else:
+                logger.debug(f'Response for {error.req.url} was ignored')
+        elif isinstance(error, DownLoadError):
+            req = error.req
+            if error.need_retry and req.retry_num < self.RETRY_TIMES:
+                req.retry_num += 1
+                logger.debug('Retrying ({}) for {}...'.format(req.retry_num, req.url))
+                self._add_request(req)
             else:
                 self._failed_urls.append(req.url)
-        elif isinstance(err, ResponseIgnored):
-            if err.new_req:
-                self._add_request(err.new_req)
-
-        return err
+                return error
 
     def _log_failed_urls(self) -> None:
         urls = self._failed_urls
@@ -456,7 +456,7 @@ class Spider:
 
         num = len(urls)
         s = 's' if num > 1 else ''
-        msg = 'Cannot download from {} url{}:\n{}'.format(num, s, '\n'.join(urls))
+        msg = 'Fail to download from the following {} url{}:\n{}'.format(num, s, '\n'.join(urls))
         logger.error(msg)
 
     @property

@@ -1,9 +1,8 @@
 import logging
 
 import pytest
-from mocy import Spider, before_download, after_download, pipe
+from mocy import Spider, before_download, after_download, pipe, Request
 from mocy.exceptions import (
-    SpiderError,
     RequestIgnored,
     ResponseIgnored,
     DownLoadError,
@@ -101,15 +100,169 @@ class TestRequestIgnoredError:
 
 
 class TestResponseIgnoredError:
-    pass
+    def test_return_none(self):
+        error = None
+
+        class MySpider(Spider):
+            entry = 'https://daydream.site/'
+
+            @after_download
+            def return_none(self, response):
+                pass
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+
+        assert isinstance(error, ResponseIgnored)
+        assert error.req is not None
+        assert error.res is not None
+        assert error.cause is None
+
+    def test_return_arbitrary_value(self):
+        error = None
+
+        class MySpider(Spider):
+            entry = 'https://daydream.site/'
+
+            @after_download
+            def return_arbitrary(self, response):
+                return 42
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+
+        assert isinstance(error, ResponseIgnored)
+        assert error.req is not None
+        assert error.res is not None
+        assert error.cause is None
+
+    def test_return_request(self):
+        error = None
+        new_req = Request('https://www.bing.com')
+
+        class MySpider(Spider):
+            entry = 'https://daydream.site/'
+
+            @after_download
+            def return_request(self, response):
+                if 'daydream' in response.url:
+                    return new_req
+                else:
+                    return response
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+
+        assert isinstance(error, ResponseIgnored)
+        assert error.new_req is new_req
+        assert error.req is not None
+        assert error.res is not None
+        assert error.cause is None
+
+    def test_return_response(self):
+        error = None
+
+        class MySpider(Spider):
+            entry = 'https://daydream.site/'
+
+            @after_download
+            def return_response(self, response):
+                return response
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+
+        assert error is None
+
+    def test_raise_error(self):
+        error = None
+        exc = ValueError('num 42')
+
+        class MySpider(Spider):
+            entry = 'https://daydream.site/'
+
+            @after_download
+            def return_response(self, response):
+                raise exc
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+
+        assert isinstance(error, ResponseIgnored)
+        assert error.new_req is None
+        assert error.req is not None
+        assert error.res is not None
+        assert error.cause is exc
 
 
 class TestDownloadError:
-    pass
+    def test_download_error(self):
+        class MySpider(Spider):
+            entry = ''
 
 
 class TestParseError:
-    pass
+    def test_default_parse_function(self):
+        error = None
+
+        class MySpider(Spider):
+            entry = 'https://daydream.site/'
+
+            def parse(self, res):
+                1 / 0
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+        assert isinstance(error, ParseError)
+        assert error.req is not None
+        assert error.res is not None
+        assert isinstance(error.cause, ZeroDivisionError)
+
+    def test_parse_function(self):
+        error = None
+
+        class MySpider(Spider):
+            @property
+            def entry(self):
+                return Request('https://daydream.site', callback=self.my_parse_func)
+
+            def my_parse_func(self, res):
+                1 / 0
+
+            def on_error(self, reason):
+                nonlocal error
+                error = reason
+
+        spider = MySpider()
+        spider.start()
+        assert isinstance(error, ParseError)
+        assert error.req is not None
+        assert error.res is not None
+        assert isinstance(error.cause, ZeroDivisionError)
 
 
 class TestPipeError:
@@ -150,3 +303,19 @@ class TestErrorInErrorHandler:
         record = caplog.records[0]
         assert 'Error in error handler' in record.message
 
+
+if __name__ == '__main__':
+    from mocy import logger
+
+    class Spider1(Spider):
+        TIMEOUT = 1
+        RETRY_TIMES = 3
+        # entry = 'https://www.google.com'
+        entry = ['foo.com', 'https://google.com', 'https://www.baidu.com']
+        # entry = ['foo.com', 'https://google.com', 'https://baidu.com']
+
+        def collect(self, item):
+            logger.info(item.select('title')[0].text)
+
+    spider = Spider1()
+    spider.start()
