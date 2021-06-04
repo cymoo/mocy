@@ -1,5 +1,3 @@
-import logging
-
 import requests
 
 from mocy import Spider, pipe

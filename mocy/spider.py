@@ -87,7 +87,7 @@ class Spider:
     RETRY_CODES = (500, 502, 503, 504, 408, 429)
 
     # The amount of time (in secs) that the downloader will wait before retrying a failed request.
-    RETRY_DELAY = 3
+    RETRY_DELAY = 1
 
     MAX_REQUEST_QUEUE_SIZE = 256
 
@@ -110,8 +110,8 @@ class Spider:
         self._request_queue = DelayQueue(self.MAX_REQUEST_QUEUE_SIZE)
         self._response_queue = Queue()
 
-        self._request_num = 0
-        self._response_num = 0
+        self._request_count = 0
+        self._response_count = 0
         self._failed_urls = []
 
         self._last_download_time = 0
@@ -130,8 +130,7 @@ class Spider:
         pass
 
     def on_error(self, reason):
-        # logger.error(reason.msg, exc_info=reason.cause)
-        logger.error(reason.msg)
+        logger.error(reason.msg, exc_info=reason.cause)
 
     def start(self):
         start = time.time()
@@ -167,7 +166,7 @@ class Spider:
 
         while not self._completed:
             res = self._response_queue.get()
-            self._response_num += 1
+            self._response_count += 1
 
             if isinstance(res, SpiderError):
                 err = self._check_error(res)
@@ -267,7 +266,7 @@ class Spider:
             self._add_request(req)
 
     def _add_request(self, req: 'Request') -> None:
-        self._request_num += 1
+        self._request_count += 1
 
         if req.timeout is None:
             req.timeout = self.TIMEOUT
@@ -461,4 +460,4 @@ class Spider:
 
     @property
     def _completed(self) -> bool:
-        return self._request_num == self._response_num
+        return self._request_count == self._response_count

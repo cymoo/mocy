@@ -54,11 +54,14 @@ class TestBeforeDownloadHandler:
         if handlers:
             MySpider.before_download_handlers = handlers
         spider = MySpider()
-        item = next(iter(spider))
-        if isinstance(item, SpiderError):
-            yield item
-        else:
-            yield item[0]
+        try:
+            item = next(iter(spider))
+            if isinstance(item, SpiderError):
+                yield item
+            else:
+                yield item[0]
+        except StopIteration:
+            yield
         MySpider.before_download_handlers = old_handlers
 
     def test_using_decorator(self):
@@ -88,15 +91,11 @@ class TestBeforeDownloadHandler:
 
     def test_return_none(self):
         with self.start([return_none]) as item:
-            assert isinstance(item, RequestIgnored)
-            assert isinstance(item.req, Request)
-            assert item.cause is None
+            assert item is None
 
     def test_return_arbitrary_value(self):
         with self.start([return_arbitrary_value]) as item:
-            assert isinstance(item, RequestIgnored)
-            assert isinstance(item.req, Request)
-            assert item.cause is None
+            assert item is None
 
     def test_raise_error(self):
         with self.start([raise_error]) as item:

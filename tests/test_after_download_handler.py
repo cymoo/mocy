@@ -59,11 +59,14 @@ class TestAfterDownloadHandler:
         if handlers:
             MySpider.after_download_handlers = handlers
         spider = MySpider()
-        item = next(iter(spider))
-        if isinstance(item, SpiderError):
-            yield item
-        else:
-            yield item[0]
+        try:
+            item = next(iter(spider))
+            if isinstance(item, SpiderError):
+                yield item
+            else:
+                yield item[0]
+        except StopIteration:
+            yield
         MySpider.after_download_handlers = old_handlers
 
     def test_using_decorator(self):
@@ -77,34 +80,17 @@ class TestAfterDownloadHandler:
             assert isinstance(item.spider, Spider)
 
     def test_return_request(self):
-        old_handlers = MySpider.after_download_handlers
-        MySpider.after_download_handlers = [return_request]
-        spider = MySpider()
-        it = iter(spider)
-        item1 = next(it)
-        assert isinstance(item1, ResponseIgnored)
-        assert isinstance(item1.req, Request)
-        assert isinstance(item1.res, requests.Response)
-        assert item1.cause is None
-        item2 = next(it)
-        assert isinstance(item2[0], requests.Response)
-        assert item2[0].url == 'https://cn.bing.com/'
-
-        MySpider.after_download_handlers = old_handlers
+        with self.start([return_request]) as item:
+            assert isinstance(item, requests.Response)
+            assert item.url == 'https://cn.bing.com/'
 
     def test_return_none(self):
         with self.start([return_none]) as item:
-            assert isinstance(item, ResponseIgnored)
-            assert isinstance(item.req, Request)
-            assert isinstance(item.res, requests.Response)
-            assert item.cause is None
+            assert item is None
 
     def test_return_arbitrary_value(self):
         with self.start([return_arbitrary_value]) as item:
-            assert isinstance(item, ResponseIgnored)
-            assert isinstance(item.req, Request)
-            assert isinstance(item.res, requests.Response)
-            assert item.cause is None
+            assert item is None
 
     def test_raise_error(self):
         with self.start([raise_error]) as item:

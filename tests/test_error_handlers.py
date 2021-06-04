@@ -1,13 +1,10 @@
 import logging
 
-import pytest
 from mocy import Spider, before_download, after_download, pipe, Request
 from mocy.exceptions import (
     RequestIgnored,
     ResponseIgnored,
-    DownLoadError,
     ParseError,
-    PipeError
 )
 
 
@@ -29,10 +26,7 @@ class TestRequestIgnoredError:
         spider = MySpider()
         spider.start()
 
-        assert isinstance(error, RequestIgnored)
-        assert error.req is not None
-        assert error.res is None
-        assert error.cause is None
+        assert error is None
 
     def test_return_arbitrary_value(self):
         error = None
@@ -51,10 +45,7 @@ class TestRequestIgnoredError:
         spider = MySpider()
         spider.start()
 
-        assert isinstance(error, RequestIgnored)
-        assert error.req is not None
-        assert error.res is None
-        assert error.cause is None
+        assert error is None
 
     def test_raise_error(self):
         exc = ValueError('wrong value')
@@ -117,10 +108,7 @@ class TestResponseIgnoredError:
         spider = MySpider()
         spider.start()
 
-        assert isinstance(error, ResponseIgnored)
-        assert error.req is not None
-        assert error.res is not None
-        assert error.cause is None
+        assert error is None
 
     def test_return_arbitrary_value(self):
         error = None
@@ -139,10 +127,7 @@ class TestResponseIgnoredError:
         spider = MySpider()
         spider.start()
 
-        assert isinstance(error, ResponseIgnored)
-        assert error.req is not None
-        assert error.res is not None
-        assert error.cause is None
+        assert error is None
 
     def test_return_request(self):
         error = None
@@ -165,11 +150,7 @@ class TestResponseIgnoredError:
         spider = MySpider()
         spider.start()
 
-        assert isinstance(error, ResponseIgnored)
-        assert error.new_req is new_req
-        assert error.req is not None
-        assert error.res is not None
-        assert error.cause is None
+        assert error is None
 
     def test_return_response(self):
         error = None
@@ -280,7 +261,7 @@ class TestPipeError:
         spider = MySpider()
         spider.start()
         record = caplog.records[0]
-        assert 'Error occurred when collecting results' in record.message
+        assert 'Error when collecting results' in record.message
 
 
 class TestErrorInErrorHandler:
@@ -293,7 +274,7 @@ class TestErrorInErrorHandler:
 
             @before_download
             def return_none(self, request):
-                pass
+                raise ValueError('42')
 
             def on_error(self, reason):
                 raise reason
@@ -302,20 +283,3 @@ class TestErrorInErrorHandler:
         spider.start()
         record = caplog.records[0]
         assert 'Error in error handler' in record.message
-
-
-if __name__ == '__main__':
-    from mocy import logger
-
-    class Spider1(Spider):
-        TIMEOUT = 1
-        RETRY_TIMES = 3
-        # entry = 'https://www.google.com'
-        entry = ['foo.com', 'https://google.com', 'https://www.baidu.com']
-        # entry = ['foo.com', 'https://google.com', 'https://baidu.com']
-
-        def collect(self, item):
-            logger.info(item.select('title')[0].text)
-
-    spider = Spider1()
-    spider.start()

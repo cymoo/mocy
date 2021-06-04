@@ -10,7 +10,7 @@ class ExampleSpider(Spider):
             'http://qr.sjtup.com/admin/login',
             method='POST',
             session=True,
-            data={'nickname': 'sjtup', 'password': 'Sjtup313'},
+            data={'nickname': 'sjtup', 'password': 'xxx'},
             callback=self.login,
         )
         # yield 'http://httpbin.org/status/404',
@@ -59,11 +59,6 @@ class DoubanSpider(Spider):
         req.headers['X-Forwarded-For'] = random_ip()
         return req
 
-    @before_download
-    def peek_header(self, req):
-        pprint(req.__dict__)
-        return req
-
     def on_start(self) -> None:
         self.books = []
 
@@ -92,9 +87,3 @@ class FoterSpider(Spider):
 if __name__ == '__main__':
     spider = ExampleSpider()
     spider.start()
-    # spider = LiaoXueFengSpider()
-    # spider.start()
-    # spider = DoubanSpider()
-    # spider.start()
-    # spider = FoterSpider()
-    # spider.start()

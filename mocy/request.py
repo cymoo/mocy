@@ -1,5 +1,5 @@
 from numbers import Number
-from typing import Optional, Union, Callable, Tuple, Sequence
+from typing import Optional, Union, Callable, Tuple
 
 import requests
 
