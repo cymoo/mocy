@@ -23,17 +23,6 @@ class ExampleSpider(Spider):
             yield item.text, item['href']
 
 
-class LiaoXueFengSpider(Spider):
-    entry = [
-        'https://www.liaoxuefeng.com/wiki/1252599548343744/1255876875896416'
-    ]
-
-    def parse(self, res):
-        for item in res.select('#x-content'):
-            print(item.text)
-            yield item
-
-
 class DoubanSpider(Spider):
     entry = 'https://book.douban.com/tag/%E7%BC%96%E7%A8%8B?start=0&type=T'
 
@@ -65,18 +54,6 @@ class DoubanSpider(Spider):
         with open('cs-books.txt', 'wt') as fp:
             for book in self.books:
                 fp.write(book[1] + '---' + book[0] + '\n')
-
-
-class FoterSpider(Spider):
-    def entry(self):
-        for i in range(1):
-            yield f'https://foter.com/search/instant/?q=girl&page={i+1}'
-
-    def parse(self, res):
-        pprint(res.request.headers)
-        print(res.text)
-        for img in res.select('#scrollingcontent img'):
-            print(img['src'])
 
 
 if __name__ == '__main__':
