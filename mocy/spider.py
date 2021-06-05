@@ -5,7 +5,8 @@ from enum import Enum
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, MutableSequence, Sequence, Tuple
+from typing import Optional, Generator, Any, Union, \
+    MutableSequence, Sequence, Tuple, List, Callable, Iterable
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -95,15 +96,15 @@ class Spider:
         'User-Agent': 'mocy'
     }
 
-    before_download_handlers = [random_useragent]
+    before_download_handlers: List[Callable] = [random_useragent]
 
-    after_download_handlers = []
+    after_download_handlers: List[Callable] = []
 
-    pipes = []
+    pipes: List[Callable] = []
 
-    entry = []
+    entry: Union[str, Request, Iterable[Union[str, Request]], Callable] = []
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._check_config()
         self._check_handlers()
 
@@ -117,22 +118,29 @@ class Spider:
         self._last_download_time = 0
         self._lock = Lock()
 
-    def on_start(self):
-        pass
+    def on_start(self) -> None:
+        """Called when the spider starts up."""
 
-    def parse(self, res):
+    def parse(self, res: Response) -> Any:
+        """Parse a response and generate some data or new requests."""
         yield res
 
-    def collect(self, item):
+    def collect(self, item: Any) -> Any:
+        """Called when the spider outputs a result.
+        Usually it will be called multiple times。"""
         logger.info(item)
 
-    def on_finish(self):
-        pass
+    def on_finish(self) -> None:
+        """Called when the spider exits."""
 
-    def on_error(self, reason):
+    def on_error(self, reason: SpiderError) -> None:
+        """Called when the spider encounters an error when downloading or parsing.
+        It may be called multiple times。"""
         logger.error(reason.msg, exc_info=reason.cause)
 
-    def start(self):
+    def start(self) -> None:
+        """Starts up the spider.
+        It will keep running until all requests were downloaded."""
         start = time.time()
         logger.info('Spider is running...')
 
@@ -176,7 +184,7 @@ class Spider:
 
             res.select = partial(Response.select, res)
 
-            parse = res.callback if res.callback else self.parse
+            parse = getattr(res.req, 'callback') or self.parse
 
             session = res.session
             close_session = True
@@ -186,13 +194,14 @@ class Spider:
                 if isinstance(result, (MutableSequence, Generator)):
                     for item in result:
                         if isinstance(item, Request):
-                            req = item
-                            if session and (req.session in (False, None)):
-                                close_session = False
-                                req.session = session
+                            new_req = item
+                            new_req.url = urljoin(res.url, new_req.url)
 
-                            req.url = urljoin(res.url, req.url)
-                            self._add_request(req)
+                            if session and (new_req.session in (False, None)):
+                                close_session = False
+                                new_req.session = session
+
+                            self._add_request(new_req)
                         else:
                             yield item, res
             except Exception as err:
@@ -202,10 +211,8 @@ class Spider:
                 yield err
 
             if session and close_session:
-                try:
-                    session.close()
-                except Exception as err:
-                    yield SpiderError('Cannot close session', err)
+                session.close()
+
         self.on_finish()
 
     @classmethod

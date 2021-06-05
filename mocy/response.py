@@ -1,4 +1,4 @@
-from typing import Optional, Callable, List
+from typing import Optional, List
 
 import bs4
 import requests
@@ -18,8 +18,7 @@ class Response(requests.Response):
     def __init__(self):
         super().__init__()
         self.req: Optional[Request] = None
-        self.callback: Optional[Callable] = None
-        self.state: dict = {}
+        self.state: Optional[dict] = None
         self.session: Optional[requests.Session] = None
 
     def select(self, selector: str, **kw) -> List[bs4.element.Tag]:

@@ -8,8 +8,8 @@ class Request:
     def __init__(self,
                  url: str,
                  method: str = 'GET',
-                 callback: Optional[Callable] = None,
 
+                 callback: Optional[Callable] = None,
                  session: Union[bool, dict, requests.Session] = False,
                  state: Optional[dict] = None,
 
@@ -25,17 +25,17 @@ class Request:
                  **kwargs) -> None:
         self.url = url
         self.method = method
-        self.callback = callback
 
+        self.callback = callback
         self.session = session
-        self.state = state or {}
+        self.state = state
 
         self.headers = headers or {}
+        self.cookies = cookies
         self.params = params
         self.data = data
         self.json = json
         self.files = files
-        self.cookies = cookies
         self.proxies = proxies
         self.verify = verify
         self.timeout = timeout
@@ -44,7 +44,25 @@ class Request:
 
         self.retry_num = 0
 
-    def _make_session(self) -> Optional[requests.Session]:
+    def send(self) -> 'Response':
+        """Send a request and return a response."""
+        it = requests
+        sess = self._get_session()
+        if sess:
+            it = sess
+
+        res = it.request(self.method, self.url, **self._prepare_args())
+        res.req = self
+        res.state = self.state
+        res.session = sess
+        return res
+
+    @property
+    def initial(self) -> bool:
+        """Whether it is an independent request or the first request in a session."""
+        return not isinstance(self.session, requests.Session)
+
+    def _get_session(self) -> Optional[requests.Session]:
         session = self.session
         if session is True:
             return requests.Session()
@@ -58,37 +76,17 @@ class Request:
         else:
             return None
 
-    @property
-    def initial(self) -> bool:
-        """Whether it is an independent request or the first request in a session."""
-        return not isinstance(self.session, requests.Session)
-
     def _prepare_args(self) -> dict:
         args = {}
 
-        def add(name):
-            value = getattr(self, name)
-            if value: args[name] = value
-
-        for item in ('headers', 'cookies', 'params', 'data',
+        for name in ('headers', 'cookies', 'params', 'data',
                      'json', 'files', 'proxies', 'verify', 'timeout'):
-            add(item)
+            value = getattr(self, name)
+            if value:
+                args[name] = value
 
         args.update(self.kwargs)
         return args
-
-    def send(self) -> 'Response':
-        it = requests
-        sess = self._make_session()
-        if sess:
-            it = sess
-
-        res = it.request(self.method, self.url, **self._prepare_args())
-        res.req = self
-        res.callback = self.callback
-        res.state = self.state
-        res.session = sess
-        return res
 
     def __repr__(self) -> str:
         return '<Request [{}]>'.format(self.method)
