@@ -13,7 +13,6 @@ class ExampleSpider(Spider):
             data={'nickname': 'sjtup', 'password': 'xxx'},
             callback=self.login,
         )
-        # yield 'http://httpbin.org/status/404',
 
     def login(self, res):
         yield Request('/admin/list', callback=self.parse_list)
@@ -22,10 +21,6 @@ class ExampleSpider(Spider):
     def parse_list(self, res):
         for item in res.select('td:first-child a'):
             yield item.text, item['href']
-
-    # @pipe
-    # def output(self, result):
-    #     (result)
 
 
 class LiaoXueFengSpider(Spider):

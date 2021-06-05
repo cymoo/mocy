@@ -56,3 +56,20 @@ class TestParse:
 
         spider = MySpider()
         assert list(map(lambda x: x[0], iter(spider))) == [42]
+
+    def test_pass_state_between_request_and_response(self):
+        state = {'foo': 'bar'}
+        state1 = None
+
+        class MySpider(Spider):
+            def entry(self):
+                return Request('https://daydream.site', state=state)
+
+            def parse(self, res):
+                nonlocal state1
+                state1 = res.state
+
+        MySpider().start()
+
+        assert state == state1
+

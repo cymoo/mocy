@@ -5,6 +5,7 @@ import time
 from queue import Queue, PriorityQueue
 from random import random, randint
 from threading import Thread
+from typing import Union
 from urllib.parse import urlparse
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     'logger',
     'random_range',
     'random_ip',
+    'same_origin',
     'identity',
     'assert_positive_number',
     'assert_not_negative_number',
@@ -41,7 +43,11 @@ class DelayQueue(Queue):
                 time.sleep(0.05)
 
 
-def random_range(value, scale1, scale2) -> float:
+def random_range(
+        value: Union[int, float],
+        scale1: Union[int, float],
+        scale2: Union[int, float]
+) -> float:
     if scale1 > scale2:
         lo, hi = scale2, scale1
     else:
@@ -70,7 +76,7 @@ def assert_positive_integer(num):
     assert num > 0 and isinstance(num, int)
 
 
-def add_http_if_no_scheme(url):
+def add_http_if_no_scheme(url: str) -> str:
     """Add http as the default scheme if it is missing from the url."""
     match = re.match(r'^\w+://', url, flags=re.I)
     if not match:
@@ -78,6 +84,21 @@ def add_http_if_no_scheme(url):
         scheme = "http:" if parts.netloc else "http://"
         url = scheme + url
     return url
+
+
+def same_origin(url1: str, url2: str) -> bool:
+    """Return True if the two urls are the same origin
+    >>> same_origin('http://a.com', 'https://a.com')
+    False
+    >>> same_origin('https://a.com', 'https://a.com:8080')
+    False
+    >>> same_origin('https://a.com/foo', 'https://a.com/bar')
+    True
+    """
+    return all(map(
+        lambda x: x[0] == x[1],
+        list(zip(urlparse(url1), urlparse(url2)))[0:2]
+    ))
 
 
 def random_ip() -> str:
