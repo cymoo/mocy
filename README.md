@@ -1,3 +1,3 @@
-# A light-weight spider framework
+# A lightweight spider framework
 
 working in progress
