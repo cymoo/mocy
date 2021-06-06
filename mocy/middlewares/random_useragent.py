@@ -5,7 +5,10 @@ dirname = os.path.dirname(os.path.abspath(__file__))
 
 # The useragent list was taken from: https://techblog.willshouse.com/2012/01/03/most-common-user-agents/
 with open(os.path.join(dirname, 'useragents.txt'), 'rt') as fp:
-    useragents = [line.strip() for line in fp.readlines()]
+    useragents = []
+    for line in fp:
+        line = line.strip()
+        if line: useragents.append(line)
 
 
 def random_useragent(spider, request):

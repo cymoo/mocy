@@ -93,7 +93,12 @@ class Spider:
     MAX_REQUEST_QUEUE_SIZE = 256
 
     DEFAULT_HEADERS = {
-        'User-Agent': 'mocy'
+        'User-Agent': 'mocy/0.01 (a kind spider)',
+        'Cache-Control': 'max-age=0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'accept-language: zh-Hans-CN,zh-CN;q=0.9,zh;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5,'
+                           'zh-TW;q=0.4,ja;q=0.3,pt;q=0.2,hu;q=0.1',
+
     }
 
     before_download_handlers: List[Callable] = [random_useragent]
@@ -194,14 +199,15 @@ class Spider:
                 if isinstance(result, (MutableSequence, Generator)):
                     for item in result:
                         if isinstance(item, Request):
-                            new_req = item
-                            new_req.url = urljoin(res.url, new_req.url)
+                            req = item
+                            req.url = urljoin(res.url, req.url)
 
-                            if session and (new_req.session in (False, None)):
+                            if session and (req.session in (False, None)):
                                 close_session = False
-                                new_req.session = session
+                                req.session = session
 
-                            self._add_request(new_req)
+                            req.headers['Referer'] = res.url
+                            self._add_request(req)
                         else:
                             yield item, res
             except Exception as err:

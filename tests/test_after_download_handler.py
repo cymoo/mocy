@@ -16,8 +16,8 @@ class MySpider(Spider):
         return response
 
     @after_download
-    def test_using_decorator_sequentially(self, response):
-        response.foo = response.foo + '2'
+    def test_using_decorator1(self, response):
+        response.foo = response.foo + '1'
         return response
 
     def parse(self, response):
@@ -73,7 +73,7 @@ class TestAfterDownloadHandler:
         with self.start() as item:
             assert isinstance(item, requests.Response)
             assert isinstance(item.req, Request)
-            assert item.foo == '12'
+            assert item.foo == '11'
 
     def test_first_argument(self):
         with self.start([check_first_argument]) as item:

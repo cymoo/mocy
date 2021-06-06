@@ -1,3 +1,4 @@
+import contextlib
 import logging
 
 from mocy import Spider, before_download, after_download, pipe, Request
@@ -5,6 +6,7 @@ from mocy.exceptions import (
     RequestIgnored,
     ResponseIgnored,
     ParseError,
+    DownLoadError,
 )
 
 
@@ -197,9 +199,51 @@ class TestResponseIgnoredError:
 
 
 class TestDownloadError:
-    def test_download_error(self):
+    @contextlib.contextmanager
+    def start(self, url, retry_times=None, retry_codes=None):
         class MySpider(Spider):
-            entry = ''
+            def parse(self, res):
+                pass
+
+        MySpider.entry = url
+        original_times = MySpider.RETRY_TIMES
+        original_codes = MySpider.RETRY_CODES
+        if retry_times: MySpider.RETRY_TIMES = retry_times
+        if retry_codes: MySpider.RETRY_CODES = retry_codes
+
+        it = iter(MySpider())
+        item = next(it)
+
+        yield item
+        MySpider.RETRY_TIMES = original_times
+        MySpider.RETRY_CODES = original_codes
+
+    def test_wrong_url(self):
+        from requests.exceptions import MissingSchema
+        with self.start('foo.com') as result:
+            assert isinstance(result, DownLoadError)
+            assert result.req is not None
+            assert result.res is None
+            assert result.need_retry is False
+            assert isinstance(result.cause, MissingSchema)
+
+    def test_connection_error(self):
+        from requests.exceptions import ConnectionError
+        with self.start('https://some-not-exist-url.com', retry_times=0) as result:
+            assert isinstance(result, DownLoadError)
+            assert result.req is not None
+            assert result.res is None
+            assert result.need_retry is True
+            assert isinstance(result.cause, ConnectionError)
+
+    def test_bad_status_code(self):
+        from mocy.exceptions import FailedStatusCode
+        with self.start('https://daydream.site/not-exist-url', retry_times=0, retry_codes=[404]) as result:
+            assert isinstance(result, DownLoadError)
+            assert result.req is not None
+            assert result.res is not None
+            assert result.need_retry is True
+            assert isinstance(result.cause, FailedStatusCode)
 
 
 class TestParseError:
@@ -223,7 +267,7 @@ class TestParseError:
         assert error.res is not None
         assert isinstance(error.cause, ZeroDivisionError)
 
-    def test_parse_function(self):
+    def test_parse(self):
         error = None
 
         class MySpider(Spider):

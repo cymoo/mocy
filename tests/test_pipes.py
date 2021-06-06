@@ -17,7 +17,7 @@ class MySpider(Spider):
             return result
 
     @pipe
-    def test_using_decorator_sequentially(self, result, response):
+    def test_using_decorator1(self, result, response):
         return result + '1'
 
 
