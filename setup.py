@@ -32,7 +32,7 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     keywords='scrapy crawler spider',
-    packages=['mocy'],
+    packages=['mocy', 'mocy.middlewares'],
     python_requires='>=3.6',
     install_requires=[
         'requests>=2.25.1',

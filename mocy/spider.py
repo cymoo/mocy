@@ -93,7 +93,7 @@ class Spider:
     MAX_REQUEST_QUEUE_SIZE = 256
 
     DEFAULT_HEADERS = {
-        'User-Agent': 'mocy/0.01 (a kind spider)',
+        'User-Agent': 'mocy/0.1 (a kind spider)',
         'Cache-Control': 'max-age=0',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'accept-language: zh-Hans-CN,zh-CN;q=0.9,zh;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5,'
