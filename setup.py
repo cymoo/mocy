@@ -9,7 +9,7 @@ setup(
     name='mocy',
     version=mocy.__version__,
     url='https://github.com/cymoo/mocy',
-    description='A lightweight spider framework.',
+    description='A lightweight web crawling framework.',
     long_description=readme,
     long_description_content_type='text/markdown',
     author='cymoo',
