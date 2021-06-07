@@ -65,7 +65,8 @@ pids
 
 ### Distribution
 
-/dist/
+/dist
+/build
 
 
 ### Unit test / coverage reports
