@@ -4,4 +4,4 @@ from .response import Response
 from .utils import logger
 
 
-__version__ = '0.1.7'
+__version__ = '0.2.3'
