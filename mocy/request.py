@@ -5,6 +5,14 @@ import requests
 
 
 class Request:
+    """ The popular HTTP library https://requests.readthedocs.io/en/latest/ is used under the hood.
+    Please refer to its documentation: https://requests.readthedocs.io/en/latest/api/#main-interface.
+    It accepts some extra parameters:
+    Parameters:
+        callback: it will be used to handle response to this request. The default value is `self.parse`.
+        session: it provides cookie persistence, connection-pooling, and configuration.
+        state: it is shared between a request and the corresponding response.
+    """
     def __init__(self,
                  url: str,
                  method: str = 'GET',
@@ -89,7 +97,7 @@ class Request:
         return args
 
     def __repr__(self) -> str:
-        return '<Request [{}]>'.format(self.method)
+        return '<Request "{}" [{}]>'.format(self.url, self.method)
 
 
 from .response import Response

@@ -50,21 +50,34 @@ class HandlerType(Enum):
 
 
 def before_download(func):
+    """The decorated method is used to modify request objects.
+    If it does not return the same or a new `Request` object, the passed request will be ignored.
+    """
     func._ht = HandlerType.BEFORE_DOWNLOAD
     return func
 
 
 def after_download(func):
+    """The decorated method is used to modify response objects.
+    If it does not return the same or a new `Response` object, the passed response will be ignored.
+    If it returns a `Request` object, then the object will be added to request queue.
+    """
     func._ht = HandlerType.AFTER_DOWNLOAD
     return func
 
 
 def pipe(func):
+    """The decorated method is used to process yielded items.
+    If it returns `None`, the item won't be passed to the next pipeline.
+    `Spider.collect` is a default pipe.
+    """
     func._ht = HandlerType.PIPE
     return func
 
 
 class Spider:
+    """Base class for spiders. All spiders must inherit from this class."""
+
     # The number of concurrent requests that will be performed by the downloader.
     WORKERS = os.cpu_count() * 2
 
@@ -130,7 +143,7 @@ class Spider:
 
     def collect(self, item: Any) -> Any:
         """Called when the spider outputs a result.
-        Usually it will be called multiple times。"""
+        Usually it will be called multiple times."""
         logger.info(item)
 
     def on_finish(self) -> None:
@@ -138,12 +151,12 @@ class Spider:
 
     def on_error(self, reason: SpiderError) -> None:
         """Called when the spider encounters an error when downloading or parsing.
-        It may be called multiple times。"""
+        It may be called multiple times."""
         logger.error(reason.msg, exc_info=reason.cause)
 
     def start(self) -> None:
         """Starts up the spider.
-        It will keep running until all requests were downloaded."""
+        It will keep running until all requests were processed."""
         start = time.time()
         logger.info('Spider is running...')
 
@@ -167,7 +180,7 @@ class Spider:
             except Exception as err:
                 logger.error('Error in error handler!', exc_info=err)
 
-        logger.info('Spider exited; total running time {:.2f}s.'.format(time.time() - start))
+        logger.info('Spider exited; running time {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
 
     def __iter__(self) -> Generator[Union[SpiderError, Tuple[Any, requests.Response]], None, None]:
@@ -466,7 +479,7 @@ class Spider:
 
         num = len(urls)
         s = 's' if num > 1 else ''
-        msg = 'Fail to download from the following {} url{}:\n{}'.format(num, s, '\n'.join(urls))
+        msg = 'Fail to download from the following {} url{}:\n{}\n'.format(num, s, '\n'.join(urls))
         logger.error(msg)
 
     @property

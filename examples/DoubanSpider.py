@@ -19,8 +19,12 @@ class DoubanSpider(Spider):
             yield Request(next_url)
 
     @before_download
-    def fake_ip(self, req):
-        req.headers['X-Forwarded-For'] = random_ip()
+    def use_proxy(self, req):
+        # req.headers['foo'] = 'bar'
+        # req.proxies = {
+        #     'http': 'http://10.10.1.10:3128',
+        #     'https': 'http://10.10.1.10:1080'
+        # }
         return req
 
     def on_start(self) -> None:
