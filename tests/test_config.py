@@ -6,9 +6,7 @@ class TestDefaultHeaders:
         headers1 = headers2 = None
 
         class MySpider(Spider):
-            DEFAULT_HEADERS = {
-                'foo': 'bar'
-            }
+            DEFAULT_HEADERS = {'foo': 'bar'}
             entry = 'https://daydream.site'
 
             def parse(self, res):
@@ -26,7 +24,15 @@ class TestDefaultHeaders:
 
 
 class TestRetry:
-    def start(self, caplog, url, retry_times=None, retry_codes=None, timeout=None, expected_retry_times=None):
+    def start(
+        self,
+        caplog,
+        url,
+        retry_times=None,
+        retry_codes=None,
+        timeout=None,
+        expected_retry_times=None,
+    ):
         class MySpider(Spider):
             TIMEOUT = 1
             entry = url
@@ -55,7 +61,17 @@ class TestRetry:
         self.start(caplog, 'https://some-url-not-exists', retry_times=0, timeout=1)
 
     def test_retry_status_code(self, caplog):
-        self.start(caplog, 'https://daydream.site/path-not-exists', retry_times=2, retry_codes=[404])
+        self.start(
+            caplog,
+            'https://daydream.site/path-not-exists',
+            retry_times=2,
+            retry_codes=[404],
+        )
         caplog.records.clear()
-        self.start(caplog, 'https://daydream.site/path-not-exists',
-                   retry_times=5, retry_codes=[500], expected_retry_times=0)
+        self.start(
+            caplog,
+            'https://daydream.site/path-not-exists',
+            retry_times=5,
+            retry_codes=[500],
+            expected_retry_times=0,
+        )

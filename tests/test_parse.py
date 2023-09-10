@@ -72,4 +72,3 @@ class TestParse:
         MySpider().start()
 
         assert state == state1
-

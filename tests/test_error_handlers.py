@@ -208,8 +208,10 @@ class TestDownloadError:
         MySpider.entry = url
         original_times = MySpider.RETRY_TIMES
         original_codes = MySpider.RETRY_CODES
-        if retry_times: MySpider.RETRY_TIMES = retry_times
-        if retry_codes: MySpider.RETRY_CODES = retry_codes
+        if retry_times:
+            MySpider.RETRY_TIMES = retry_times
+        if retry_codes:
+            MySpider.RETRY_CODES = retry_codes
 
         it = iter(MySpider())
         item = next(it)
@@ -220,6 +222,7 @@ class TestDownloadError:
 
     def test_wrong_url(self):
         from requests.exceptions import MissingSchema
+
         with self.start('foo.com') as result:
             assert isinstance(result, DownLoadError)
             assert result.req is not None
@@ -229,6 +232,7 @@ class TestDownloadError:
 
     def test_connection_error(self):
         from requests.exceptions import ConnectionError
+
         with self.start('https://some-not-exist-url.com', retry_times=0) as result:
             assert isinstance(result, DownLoadError)
             assert result.req is not None
@@ -238,7 +242,10 @@ class TestDownloadError:
 
     def test_bad_status_code(self):
         from mocy.exceptions import FailedStatusCode
-        with self.start('https://daydream.site/not-exist-url', retry_times=0, retry_codes=[404]) as result:
+
+        with self.start(
+            'https://daydream.site/not-exist-url', retry_times=0, retry_codes=[404]
+        ) as result:
             assert isinstance(result, DownLoadError)
             assert result.req is not None
             assert result.res is not None
@@ -293,6 +300,7 @@ class TestParseError:
 class TestPipeError:
     def test_raise_error_in_pipe(self, caplog):
         from mocy import logger
+
         logger.set_level(logging.ERROR)
 
         class MySpider(Spider):
@@ -311,6 +319,7 @@ class TestPipeError:
 class TestErrorInErrorHandler:
     def test_raise_error_in_error_handler(self, caplog):
         from mocy import logger
+
         logger.set_level(logging.ERROR)
 
         class MySpider(Spider):

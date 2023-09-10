@@ -5,8 +5,18 @@ from enum import Enum
 from functools import partial
 from queue import Queue
 from threading import Thread, Lock
-from typing import Optional, Generator, Any, Union, \
-    MutableSequence, Sequence, Tuple, List, Callable, Iterable
+from typing import (
+    Optional,
+    Generator,
+    Any,
+    Union,
+    MutableSequence,
+    Sequence,
+    Tuple,
+    List,
+    Callable,
+    Iterable,
+)
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -109,7 +119,7 @@ class Spider:
         'User-Agent': 'mocy/0.1 (a kind spider)',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'zh-Hans-CN,zh-CN;q=0.9,zh;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5,'
-                           'zh-TW;q=0.4,ja;q=0.3,pt;q=0.2,hu;q=0.1',
+        'zh-TW;q=0.4,ja;q=0.3,pt;q=0.2,hu;q=0.1',
     }
 
     before_download_handlers: List[Callable] = [random_useragent]
@@ -183,7 +193,9 @@ class Spider:
         logger.info('Spider exited; running time {:.2f}s.'.format(time.time() - start))
         self._log_failed_urls()
 
-    def __iter__(self) -> Generator[Union[SpiderError, Tuple[Any, requests.Response]], None, None]:
+    def __iter__(
+        self,
+    ) -> Generator[Union[SpiderError, Tuple[Any, requests.Response]], None, None]:
         self.on_start()
         self._start_requests()
         self._start_downloaders()
@@ -335,9 +347,11 @@ class Spider:
                 t0 = time.time()
                 res = req.send()
                 t1 = time.time()
-                logger.info('"{} {}" {} {:.2f}s'.format(
-                    req.method, req.url, res.status_code, t1 - t0
-                ))
+                logger.info(
+                    '"{} {}" {} {:.2f}s'.format(
+                        req.method, req.url, res.status_code, t1 - t0
+                    )
+                )
                 self._check_status_codes(res)
 
             except Exception as err:
@@ -438,7 +452,7 @@ class Spider:
 
     def _start_pipes(self, item: Any, res: 'Response') -> Any:
         rv = item
-        for func in (self.pipes or (self.__class__.collect,)):
+        for func in self.pipes or (self.__class__.collect,):
             arg_count = func.__code__.co_argcount
             if arg_count == 3:
                 rv = func(self, rv, res)
@@ -479,7 +493,9 @@ class Spider:
 
         num = len(urls)
         s = 's' if num > 1 else ''
-        msg = 'Fail to download from the following {} url{}:\n{}\n'.format(num, s, '\n'.join(urls))
+        msg = 'Fail to download from the following {} url{}:\n{}\n'.format(
+            num, s, '\n'.join(urls)
+        )
         logger.error(msg)
 
     @property

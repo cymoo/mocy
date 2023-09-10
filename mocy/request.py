@@ -5,7 +5,7 @@ import requests
 
 
 class Request:
-    """ The popular HTTP library https://requests.readthedocs.io/en/latest/ is used under the hood.
+    """The popular HTTP library https://requests.readthedocs.io/en/latest/ is used under the hood.
     Please refer to its documentation: https://requests.readthedocs.io/en/latest/api/#main-interface.
     It accepts some extra parameters:
     Parameters:
@@ -13,24 +13,25 @@ class Request:
         session: it provides cookie persistence, connection-pooling, and configuration.
         state: it is shared between a request and the corresponding response.
     """
-    def __init__(self,
-                 url: str,
-                 method: str = 'GET',
 
-                 callback: Optional[Callable] = None,
-                 session: Union[bool, dict, requests.Session] = False,
-                 state: Optional[dict] = None,
-
-                 headers: Optional[dict] = None,
-                 cookies: Optional[dict] = None,
-                 params: Optional[dict] = None,
-                 data: Optional[dict] = None,
-                 json: Optional[dict] = None,
-                 files: Optional[dict] = None,
-                 proxies: Optional[dict] = None,
-                 verify: bool = True,
-                 timeout: Optional[Union[Tuple[Number, Number], Number]] = None,
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        url: str,
+        method: str = 'GET',
+        callback: Optional[Callable] = None,
+        session: Union[bool, dict, requests.Session] = False,
+        state: Optional[dict] = None,
+        headers: Optional[dict] = None,
+        cookies: Optional[dict] = None,
+        params: Optional[dict] = None,
+        data: Optional[dict] = None,
+        json: Optional[dict] = None,
+        files: Optional[dict] = None,
+        proxies: Optional[dict] = None,
+        verify: bool = True,
+        timeout: Optional[Union[Tuple[Number, Number], Number]] = None,
+        **kwargs
+    ) -> None:
         self.url = url
         self.method = method
 
@@ -87,8 +88,17 @@ class Request:
     def _prepare_args(self) -> dict:
         args = {}
 
-        for name in ('headers', 'cookies', 'params', 'data',
-                     'json', 'files', 'proxies', 'verify', 'timeout'):
+        for name in (
+            'headers',
+            'cookies',
+            'params',
+            'data',
+            'json',
+            'files',
+            'proxies',
+            'verify',
+            'timeout',
+        ):
             value = getattr(self, name)
             if value:
                 args[name] = value

@@ -44,9 +44,7 @@ class DelayQueue(Queue):
 
 
 def random_range(
-        value: Union[int, float],
-        scale1: Union[int, float],
-        scale2: Union[int, float]
+    value: Union[int, float], scale1: Union[int, float], scale2: Union[int, float]
 ) -> float:
     if scale1 > scale2:
         lo, hi = scale2, scale1
@@ -95,17 +93,17 @@ def same_origin(url1: str, url2: str) -> bool:
     >>> same_origin('https://a.com/foo', 'https://a.com/bar')
     True
     """
-    return all(map(
-        lambda x: x[0] == x[1],
-        list(zip(urlparse(url1), urlparse(url2)))[0:2]
-    ))
+    return all(
+        map(lambda x: x[0] == x[1], list(zip(urlparse(url1), urlparse(url2)))[0:2])
+    )
 
 
 def random_ip() -> str:
     """A simple ipv4 generator that filters some special ips."""
     specials = [0, 10, 100, 127, 172, 192, 198, 203, 224, 240, 255]
 
-    def gen(): return randint(0, 255)
+    def gen():
+        return randint(0, 255)
 
     while True:
         prefix = gen()
@@ -146,14 +144,9 @@ class Logger:
 
     def _add_stream_handlers(self):
         stdout_handler = self._stream_handler(
-            sys.stdout,
-            logging.DEBUG,
-            lambda record: record.levelno < logging.ERROR
+            sys.stdout, logging.DEBUG, lambda record: record.levelno < logging.ERROR
         )
-        stderr_handler = self._stream_handler(
-            sys.stderr,
-            logging.ERROR
-        )
+        stderr_handler = self._stream_handler(sys.stderr, logging.ERROR)
         self._logger.addHandler(stdout_handler)
         self._logger.addHandler(stderr_handler)
 

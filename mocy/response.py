@@ -9,6 +9,7 @@ from .request import Request
 
 try:
     import lxml
+
     parser = 'lxml'
 except ModuleNotFoundError:
     parser = 'html.parser'
@@ -16,6 +17,7 @@ except ModuleNotFoundError:
 
 class Response(requests.Response):
     """This object contains a server’s response to an HTTP request."""
+
     def __init__(self):
         super().__init__()
         self.req: Optional[Request] = None

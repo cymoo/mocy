@@ -8,7 +8,8 @@ with open(os.path.join(dirname, 'useragents.txt'), 'rt') as fp:
     useragents = []
     for line in fp:
         line = line.strip()
-        if line: useragents.append(line)
+        if line:
+            useragents.append(line)
 
 
 def random_useragent(spider, request):

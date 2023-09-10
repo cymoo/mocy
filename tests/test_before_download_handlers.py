@@ -81,10 +81,7 @@ class TestBeforeDownloadHandler:
             assert item.req.headers['foo'] == '1'
 
     def test_modify_header(self):
-        with self.start([
-            add_header,
-            modify_header
-        ]) as item:
+        with self.start([add_header, modify_header]) as item:
             assert isinstance(item, requests.Response)
             assert isinstance(item.req, Request)
             assert item.req.headers['foo'] == '12'
